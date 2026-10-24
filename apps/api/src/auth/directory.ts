@@ -34,12 +34,20 @@ export const defaultClientFactory: LdapClientFactory = (cfg) =>
     url: cfg.url,
     connectTimeout: CONNECT_TIMEOUT_MS,
     timeout: OPERATION_TIMEOUT_MS,
-    tlsOptions: { rejectUnauthorized: cfg.tlsRejectUnauthorized },
+    // ldapts switches to TLS whenever tlsOptions is set, so only pass it for ldaps://
+    ...(cfg.url.toLowerCase().startsWith('ldaps://')
+      ? { tlsOptions: { rejectUnauthorized: cfg.tlsRejectUnauthorized } }
+      : {}),
   });
 
+const resultCode = (err: unknown) =>
+  err instanceof Error && 'code' in err ? (err as { code: unknown }).code : undefined;
+
 const isInvalidCredentials = (err: unknown) =>
-  err instanceof InvalidCredentialsError ||
-  (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 49);
+  err instanceof InvalidCredentialsError || resultCode(err) === 49;
+
+const isSizeLimitExceeded = (err: unknown) =>
+  (err instanceof Error && err.name === 'SizeLimitExceededError') || resultCode(err) === 4;
 
 function attr(entry: Entry, name: string) {
   const lower = name.toLowerCase();
@@ -164,7 +172,7 @@ export async function authenticateDirectory(
       });
       entries = result.searchEntries;
     } catch (err) {
-      if (err instanceof Error && err.name === 'SizeLimitExceededError') return null;
+      if (isSizeLimitExceeded(err)) return null;
       throw new DirectoryUnavailableError(err);
     }
     if (entries.length !== 1) return null;
