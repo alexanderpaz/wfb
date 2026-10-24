@@ -10,6 +10,7 @@ import './lib/auth-context.js';
 import { createPrisma } from './lib/db.js';
 import { registerErrorHandler } from './lib/errors.js';
 import { createStore } from './lib/kv.js';
+import { loggingOptions } from './lib/logger.js';
 import type { ModuleOptions, Services } from './lib/module.js';
 import previewModule from './preview/index.js';
 import { registerStatic } from './static.js';
@@ -30,7 +31,7 @@ export async function buildApp({
   testUser,
 }: BuildOptions): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: config.env === 'test' ? false : { level: config.logLevel },
+    ...loggingOptions(config),
     trustProxy: true,
     bodyLimit: 10 * 1024 * 1024,
   });
