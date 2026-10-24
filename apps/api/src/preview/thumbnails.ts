@@ -5,6 +5,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import type { ResolvedRef } from '../files/index.js';
 import type { EntryInfo } from '../storage/provider.js';
+import { touch } from './cache-sweeper.js';
 import { Inflight, readLimited, Semaphore, unsupported, writeAtomic } from './limits.js';
 
 export interface ThumbnailOptions {
@@ -46,7 +47,10 @@ export class ThumbnailService {
     const key = this.cacheKey(ref, info, size);
     const file = path.join(this.opts.cacheDir, `${key}.webp`);
     const etag = `"${key.slice(0, 32)}"`;
-    if (await isFile(file)) return { file, etag, generated: false };
+    if (await isFile(file)) {
+      await touch(file);
+      return { file, etag, generated: false };
+    }
 
     const generated = await this.inflight.run(key, async () => {
       if (await isFile(file)) return false;

@@ -10,6 +10,7 @@ import { pathToFileURL } from 'node:url';
 import type { ResolvedRef } from '../files/index.js';
 import { extensionOf } from '../storage/entries.js';
 import type { EntryInfo } from '../storage/provider.js';
+import { touch } from './cache-sweeper.js';
 import { Inflight, Semaphore, unsupported } from './limits.js';
 
 export interface OfficeOptions {
@@ -45,7 +46,10 @@ export class OfficeConverter {
     const key = this.cacheKey(ref, info);
     const name = `${key}.pdf`;
     const target = path.join(this.opts.cacheDir, name);
-    if (await exists(target)) return name;
+    if (await exists(target)) {
+      await touch(target);
+      return name;
+    }
     await this.inflight.run(key, async () => {
       if (await exists(target)) return;
       await this.semaphore.run(() => this.convert(ref, info, target));
