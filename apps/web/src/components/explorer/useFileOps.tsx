@@ -4,6 +4,7 @@ import {
   type ConflictStrategy,
   type FileEntry,
   type FileRef,
+  type Job,
   type ListResponse,
   type TransferResponse,
 } from '@wfb/contracts';
@@ -12,8 +13,13 @@ import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../api/client';
 import { useClipboard } from '../../stores/clipboard';
 import { toast, useToasts } from '../../stores/toasts';
+import { transferCancel, useTransfers } from '../../stores/transfers';
 import { ConflictDialog, type ConflictInfo } from './ConflictDialog';
 import { errorMessage, isConflict } from './errors';
+import { isFinished, watchJob } from './jobStream';
+import { CHUNKED_UPLOAD_THRESHOLD, chunkedUpload, UploadCancelledError } from './uploader';
+
+let uploadSeq = 0;
 
 export const listKey = (share: string, path: string) => ['list', share, path] as const;
 
@@ -107,6 +113,86 @@ export function useFileOps(describe: (ref: FileRef) => string) {
     [],
   );
 
+  /** Follows a background copy/move in the progress panel and refreshes folders when it ends. */
+  const trackJob = useCallback(
+    (jobId: string, kind: 'copy' | 'move', items: FileRef[], destination: FileRef) => {
+      const { add, update } = useTransfers.getState();
+      const from = describeRef.current({ share: items[0]!.share, path: dirname(items[0]!.path) });
+      const title = `${VERB[kind].busy} ${plural(items.length, '1 elemento', '# elementos')} de ${from} a ${describeRef.current(destination)}`;
+      add({
+        id: jobId,
+        kind,
+        title,
+        status: 'running',
+        totalBytes: 0,
+        doneBytes: 0,
+        totalItems: items.length,
+        doneItems: 0,
+        currentItem: null,
+      });
+
+      let done = false;
+      let stop: (() => void) | null = null;
+      const finish = (job: Job | null) => {
+        if (done) return;
+        done = true;
+        stop?.();
+        transferCancel.delete(jobId);
+        const dirs: FileRef[] = [destination];
+        if (kind === 'move') dirs.push(...items.map((i) => ({ share: i.share, path: dirname(i.path) })));
+        const moved = (job?.results ?? []).filter((r) => r.status === 'done').map((r) => r.source);
+        void Promise.all([invalidateDirs(qc, dirs), kind === 'move' ? invalidateSubtrees(qc, moved) : null]);
+        const failed = (job?.results ?? []).filter((r) => r.status === 'failed');
+        if (failed.length > 0) {
+          toast.error(
+            `No se ${plural(failed.length, 'pudo', 'pudieron')} ${VERB[kind].fail} ${plural(failed.length, '1 elemento', '# elementos')}`,
+            failed
+              .slice(0, 4)
+              .map((r) => `${basename(r.source.path)}: ${r.error ?? 'error'}`)
+              .join('\n'),
+          );
+        }
+      };
+      const apply = (job: Job) => {
+        if (done) return;
+        update(jobId, {
+          status: job.status === 'queued' ? 'running' : job.status,
+          totalBytes: job.totalBytes,
+          doneBytes: job.doneBytes,
+          totalItems: job.totalItems,
+          doneItems: job.doneItems,
+          currentItem: job.currentItem,
+          error: job.error,
+          failures: job.results
+            .filter((r) => r.status === 'failed')
+            .map((r) => ({ name: basename(r.source.path), error: r.error ?? 'error' })),
+          ...(isFinished(job) ? { cancelling: false } : {}),
+        });
+        if (isFinished(job)) finish(job);
+      };
+
+      transferCancel.set(jobId, async () => {
+        update(jobId, { cancelling: true });
+        try {
+          apply((await api.cancelJob(jobId)).job);
+        } catch (e) {
+          update(jobId, { cancelling: false });
+          toast.error('No se pudo cancelar la operación', errorMessage(e));
+        }
+      });
+      stop = watchJob(jobId, {
+        onJob: apply,
+        onError: (e) => {
+          if (done) return;
+          update(jobId, { status: 'failed', error: errorMessage(e), cancelling: false });
+          finish(null);
+        },
+      });
+      if (done) stop();
+    },
+    [qc],
+  );
+
   /** Copies or moves `items` into `destination`. Resolves to null when cancelled or rejected. */
   const transfer = useCallback(
     async (
@@ -153,8 +239,7 @@ export function useFileOps(describe: (ref: FileRef) => string) {
       const dirs: FileRef[] = [destination];
       if (kind === 'move') dirs.push(...items.map((i) => ({ share: i.share, path: dirname(i.path) })));
       if (res.mode === 'job') {
-        toast.info('La operación continúa en segundo plano', 'Actualice la carpeta cuando termine.');
-        await invalidateDirs(qc, dirs);
+        trackJob(res.jobId, kind, items, destination);
         return { targets: [], failed: [] };
       }
       const failed = res.results.filter((r) => r.status === 'failed');
@@ -174,7 +259,7 @@ export function useFileOps(describe: (ref: FileRef) => string) {
         failed: failed.map((r) => r.source),
       };
     },
-    [qc, askConflict],
+    [qc, askConflict, trackJob],
   );
 
   const paste = useCallback(
@@ -212,6 +297,7 @@ export function useFileOps(describe: (ref: FileRef) => string) {
             items.map((i) => ({ share: i.share, path: dirname(i.path) })),
           ),
           invalidateSubtrees(qc, items),
+          permanent ? null : qc.invalidateQueries({ queryKey: ['trash'] }),
         ]);
         return failed.length === 0;
       } catch (e) {
@@ -262,10 +348,60 @@ export function useFileOps(describe: (ref: FileRef) => string) {
     [qc],
   );
 
-  const upload = useCallback(
-    async (dir: FileRef, files: File[]): Promise<FileEntry[] | null> => {
-      if (files.length === 0) return null;
-      let strategy: ConflictStrategy = 'fail';
+  /** One large file through the resumable API, shown in the progress panel. */
+  const uploadChunked = useCallback(
+    async (dir: FileRef, file: File, conflict: ConflictStrategy): Promise<FileEntry | null> => {
+      const { add, update } = useTransfers.getState();
+      const id = `upload-${++uploadSeq}`;
+      const controller = new AbortController();
+      add({
+        id,
+        kind: 'upload',
+        title: `Subiendo «${file.name}» a ${describeRef.current(dir)}`,
+        status: 'running',
+        totalBytes: file.size,
+        doneBytes: 0,
+        totalItems: 1,
+        doneItems: 0,
+        currentItem: null,
+      });
+      transferCancel.set(id, () => {
+        update(id, { cancelling: true });
+        controller.abort();
+      });
+      try {
+        const entry = await chunkedUpload({
+          file,
+          name: file.name,
+          destination: dir,
+          conflict,
+          signal: controller.signal,
+          onProgress: (sent) => update(id, { doneBytes: sent }),
+        });
+        update(id, { status: 'completed', doneBytes: file.size, doneItems: 1 });
+        return entry;
+      } catch (e) {
+        if (e instanceof UploadCancelledError) {
+          update(id, { status: 'cancelled', cancelling: false });
+        } else {
+          update(id, {
+            status: 'failed',
+            cancelling: false,
+            error: isConflict(e) ? `Ya existe «${file.name}» en el destino.` : errorMessage(e),
+          });
+        }
+        return null;
+      } finally {
+        transferCancel.delete(id);
+      }
+    },
+    [],
+  );
+
+  /** Small files in one multipart request (busy toast, server-side conflict check). */
+  const uploadSimple = useCallback(
+    async (dir: FileRef, files: File[], initial: ConflictStrategy): Promise<FileEntry[] | null> => {
+      let strategy = initial;
       const label = `Subiendo ${plural(files.length, '1 archivo', '# archivos')}…`;
       try {
         for (;;) {
@@ -301,6 +437,46 @@ export function useFileOps(describe: (ref: FileRef) => string) {
       }
     },
     [qc, askConflict],
+  );
+
+  const upload = useCallback(
+    async (dir: FileRef, allFiles: File[]): Promise<FileEntry[] | null> => {
+      if (allFiles.length === 0) return null;
+      let strategy: ConflictStrategy = 'fail';
+      const large = allFiles.filter((f) => f.size > CHUNKED_UPLOAD_THRESHOLD);
+      const files = allFiles.filter((f) => f.size <= CHUNKED_UPLOAD_THRESHOLD);
+
+      if (large.length > 0) {
+        // Chunked uploads only learn about conflicts at the end: ask before sending any byte.
+        try {
+          const listing = await api.list(dir);
+          const taken = new Set(listing.entries.map((e) => e.name));
+          const clashes = allFiles.filter((f) => taken.has(f.name)).map((f) => f.name);
+          if (clashes.length > 0) {
+            const choice = await askConflict({
+              kind: 'upload',
+              count: allFiles.length,
+              names: clashes,
+              to: describeRef.current(dir),
+            });
+            if (!choice) return null;
+            strategy = choice;
+          }
+        } catch (e) {
+          toast.error('No se pudieron subir los archivos', errorMessage(e));
+          return null;
+        }
+      }
+
+      const chunked = Promise.all(
+        large.map((f) => uploadChunked(dir, f, strategy).finally(() => void invalidateDirs(qc, [dir]))),
+      );
+      const simple = files.length > 0 ? uploadSimple(dir, files, strategy) : Promise.resolve([]);
+      const [big, small] = await Promise.all([chunked, simple]);
+      if (small === null && big.every((e) => e === null)) return null;
+      return [...(small ?? []), ...big.filter((e): e is FileEntry => e !== null)];
+    },
+    [qc, askConflict, uploadChunked, uploadSimple],
   );
 
   const refresh = useCallback(

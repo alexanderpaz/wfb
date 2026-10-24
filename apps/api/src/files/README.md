@@ -39,6 +39,13 @@ app.files: FilesService
 `TrashHandler` is `{ trash(user: User, ref: ResolvedRef): Promise<void> }`. While it is `null`, deletes are
 permanent and report `deleted`; once set, non-permanent deletes call it and report `trashed`.
 
+`files.jobs: TransferJobHandler | null` (set by `wfb-ops`) decides whether a copy/move runs as a background
+job: the route calls `prepareTransfer` (permissions, structural checks), then `jobs.maybeStart(user, plan)`;
+a returned id answers `{ mode: 'job', jobId }`, `null` runs `runTransfer(plan)` synchronously. Jobs reuse
+`transferItem(kind, src, dest, strategy, exec)` with a progress-reporting executor, so conflict handling is
+identical in both modes. In job mode the "every item conflicts" 409 is checked up front
+(`assertNotAllConflicting`).
+
 Prefer `ref.provider` methods (`createReadStream`, `stat`, `list`...) over raw `fs` on `absPath`: they keep
 every access inside the share. If a module needs `absPath` (e.g. `soffice`, `sharp`), use it only for reads
 and only right after `resolveRef`.

@@ -58,8 +58,10 @@ export function registerFileRoutes(app: FastifyInstance, files: FilesService, co
   for (const kind of ['copy', 'move'] as const) {
     app.post(p(`/files/${kind}`), async (request): Promise<TransferResponse> => {
       const user = requireUser(request);
-      const results = await files.transfer(kind, user, parse(TransferRequest, request.body));
-      return { mode: 'sync', results };
+      const plan = await files.prepareTransfer(kind, user, parse(TransferRequest, request.body));
+      const jobId = files.jobs ? await files.jobs.maybeStart(user, plan) : null;
+      if (jobId) return { mode: 'job', jobId };
+      return { mode: 'sync', results: await files.runTransfer(plan) };
     });
   }
 
