@@ -58,8 +58,16 @@ export type TransferExecutor = (
 
 /** Hook used by POST /files/copy|move to run large transfers as background jobs. */
 export interface TransferJobHandler {
-  /** Returns a job id when the transfer runs in the background, null to run it synchronously. */
-  maybeStart(user: User, plan: TransferPlan): Promise<string | null>;
+  /**
+   * Returns a job id when the transfer runs in the background, null to run it
+   * synchronously. `onFinish` is called once a started job ends, with the
+   * per-item results so far and the error that stopped it (if any).
+   */
+  maybeStart(
+    user: User,
+    plan: TransferPlan,
+    onFinish?: (results: TransferItemResult[], error: unknown) => void,
+  ): Promise<string | null>;
 }
 
 export interface FilesServiceOptions {

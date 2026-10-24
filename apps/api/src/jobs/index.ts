@@ -59,5 +59,5 @@ export default fp<ModuleOptions>(
       registerUploadRoutes(scoped, uploads);
     });
   },
-  { name: 'wfb-ops', dependencies: ['wfb-files'] },
+  { name: 'wfb-ops', dependencies: ['wfb-audit', 'wfb-files'] },
 );

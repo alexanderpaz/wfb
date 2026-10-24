@@ -178,7 +178,8 @@ export class TrashService implements TrashHandler {
     for (const id of ids) if (!ID_RE.test(id)) throw badRequest('Invalid trash id', { id });
   }
 
-  async restore(user: User, shareId: string, ids: string[]): Promise<void> {
+  /** Returns where each item went back to (after conflict renaming). */
+  async restore(user: User, shareId: string, ids: string[]): Promise<{ id: string; path: string }[]> {
     this.checkIds(ids);
     const share = await this.access(user, shareId, 'write');
     const provider = this.provider(share);
@@ -186,6 +187,7 @@ export class TrashService implements TrashHandler {
     const metas = await Promise.all(ids.map((id) => this.readMeta(path.join(root, id))));
     const missing = ids.filter((_, i) => !metas[i]);
     if (missing.length) throw notFound('Trash item not found');
+    const restored: { id: string; path: string }[] = [];
 
     for (const [i, id] of ids.entries()) {
       const meta = metas[i]!;
@@ -197,13 +199,22 @@ export class TrashService implements TrashHandler {
       const target = await provider.entryPath(joinPath(parent, name));
       await moveEntry(path.join(root, id, ITEM), target);
       await rm(path.join(root, id), { recursive: true, force: true });
+      restored.push({ id, path: joinPath(parent, name) });
     }
+    return restored;
   }
 
-  async purge(user: User, shareId: string, ids: string[]): Promise<void> {
+  /** Returns the original path of each purged item (null for unknown ids). */
+  async purge(user: User, shareId: string, ids: string[]): Promise<{ id: string; path: string | null }[]> {
     this.checkIds(ids);
     const share = await this.access(user, shareId, 'delete');
     const root = await this.trashDir(share);
-    await Promise.all(ids.map((id) => rm(path.join(root, id), { recursive: true, force: true })));
+    return Promise.all(
+      ids.map(async (id) => {
+        const meta = await this.readMeta(path.join(root, id));
+        await rm(path.join(root, id), { recursive: true, force: true });
+        return { id, path: meta?.originalPath ?? null };
+      }),
+    );
   }
 }

@@ -101,6 +101,7 @@ export default fp<ModuleOptions>(
       if (!directory) throw notFound('Directory login is not enabled');
       assertJsonBody(request);
       const { username, password } = parse(DirectoryLoginRequest, request.body);
+      request.audit = { action: 'login', username, detail: { provider: directory.kind } };
       await checkLoginRateLimit(kv, config.loginRateLimitPerMinute, request.ip, username);
 
       let user: User | null;
@@ -148,6 +149,13 @@ export default fp<ModuleOptions>(
         const { user, subject, returnTo } = await oidc.handleCallback(query, browserState);
         await startSession(request, reply, user);
         await persistUser(prisma, user, subject, request.log);
+        void app.audit.record({
+          action: 'login',
+          user,
+          outcome: 'success',
+          ip: request.ip,
+          detail: { provider: 'oidc' },
+        });
         request.log.info({ username: user.username, provider: user.provider }, 'login');
         return reply.redirect(returnTo);
       } catch (err) {
@@ -156,12 +164,20 @@ export default fp<ModuleOptions>(
           { err: err instanceof OidcError ? (err.cause ?? err) : err, code },
           'oidc callback failed',
         );
+        void app.audit.record({
+          action: 'login',
+          user: null,
+          outcome: 'failure',
+          ip: request.ip,
+          detail: { provider: 'oidc', error: code },
+        });
         return reply.redirect(`/?authError=${code}`);
       }
     });
 
     app.post(`${API_PREFIX}/auth/logout`, async (request, reply): Promise<OkResponse> => {
-      requireUser(request);
+      const user = requireUser(request);
+      request.audit = { action: 'logout', user };
       if (request.authSession) await sessions.destroy(request.authSession.id);
       request.authSession = null;
       request.user = null;
@@ -174,5 +190,5 @@ export default fp<ModuleOptions>(
       return { user, csrfToken: request.authSession!.csrfToken };
     });
   },
-  { name: 'wfb-auth' },
+  { name: 'wfb-auth', dependencies: ['wfb-audit'] },
 );

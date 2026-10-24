@@ -1,6 +1,7 @@
 import fastifyCookie from '@fastify/cookie';
 import type { User } from '@wfb/contracts';
 import Fastify, { type FastifyInstance } from 'fastify';
+import auditModule from './audit/index.js';
 import authModule from './auth/index.js';
 import type { Config } from './config.js';
 import filesModule from './files/index.js';
@@ -53,6 +54,7 @@ export async function buildApp({
   registerHealth(app, services);
 
   const moduleOptions: ModuleOptions = { config, services };
+  await app.register(auditModule, moduleOptions);
   if (testUser) {
     app.addHook('onRequest', async (request) => {
       request.user = testUser;
