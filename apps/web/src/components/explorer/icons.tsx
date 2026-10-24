@@ -261,6 +261,13 @@ export const Icon = {
       <path d="M6.7 7v5M9.3 7v5" />
     </>,
   ),
+  RecycleBin: glyph(
+    <>
+      <path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.6a1.5 1.5 0 0 0 1.5 1.4h3.6a1.5 1.5 0 0 0 1.5-1.4L12 4" />
+      <path d="M6.2 9.8 8 7.5l1.8 2.3M8 7.5v4" stroke="#0f6cbd" />
+    </>,
+  ),
+  Restore: glyph(<path d="M3 8a5 5 0 1 0 1.6-3.7M3 2.5v3h3" />),
   Download: glyph(<path d="M8 2v8.5M4.5 7 8 10.5 11.5 7M3 13.5h10" />),
   Upload: glyph(<path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M3 13.5h10" />),
   Sort: glyph(<path d="M4.5 2.5v11M2 11l2.5 2.5L7 11M11.5 13.5v-11M9 5l2.5-2.5L14 5" />),

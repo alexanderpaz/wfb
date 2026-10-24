@@ -1,5 +1,6 @@
 import {
   API_PREFIX,
+  CreateUploadRequest,
   DeleteRequest,
   DirectoryLoginRequest,
   DownloadQuery,
@@ -7,10 +8,13 @@ import {
   ListQuery,
   MkdirRequest,
   RenameRequest,
+  SearchQuery,
   TransferRequest,
+  TrashActionRequest,
   UploadQuery,
   type ApiError,
   type AuthProvidersResponse,
+  type Job,
   type MeResponse,
 } from '@wfb/contracts';
 import { http, HttpResponse, delay, type HttpHandler } from 'msw';
@@ -53,7 +57,10 @@ async function json(request: Request): Promise<unknown> {
 const latency = () =>
   typeof window !== 'undefined' && 'serviceWorker' in navigator ? delay(150) : undefined;
 
-type Resolver = (info: { request: Request }) => Promise<Response> | Response;
+type Resolver = (info: {
+  request: Request;
+  params: Record<string, string | readonly string[] | undefined>;
+}) => Promise<Response> | Response;
 
 function guarded(fn: Resolver, auth = true): Resolver {
   return async (info) => {
@@ -67,6 +74,50 @@ function guarded(fn: Resolver, auth = true): Resolver {
     }
   };
 }
+
+function transferResponse(kind: 'copy' | 'move', b: ReturnType<typeof TransferRequest.parse>) {
+  if (store.transferSize(b.items) > store.db.jobSettings.syncLimitBytes) {
+    const job = store.startJob(kind, b.items, b.destination, b.conflict);
+    return HttpResponse.json({ mode: 'job', jobId: job.id });
+  }
+  return HttpResponse.json({
+    mode: 'sync',
+    results: store.transfer(kind, b.items, b.destination, b.conflict),
+  });
+}
+
+const encoder = new TextEncoder();
+
+/** text/event-stream of Job snapshots, closed when the job finishes. */
+function jobEvents(id: string): Response {
+  const first = store.getJob(id);
+  const done = (job: Job) =>
+    job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled';
+  let unsubscribe = () => {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const send = (job: Job) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(job)}\n\n`));
+      send(first);
+      if (done(first)) return controller.close();
+      unsubscribe = store.subscribeJob(id, (job) => {
+        send(job);
+        if (done(job)) {
+          unsubscribe();
+          controller.close();
+        }
+      });
+    },
+    cancel() {
+      unsubscribe();
+    },
+  });
+  return new HttpResponse(stream, {
+    headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' },
+  });
+}
+
+const param = (params: Record<string, string | readonly string[] | undefined>, key: string) =>
+  String(params[key] ?? '');
 
 const me = (): MeResponse => ({ user: store.db.user, csrfToken: 'mock-csrf-token' });
 
@@ -136,23 +187,11 @@ export const handlers: HttpHandler[] = [
   ),
   http.post(
     url('/files/copy'),
-    guarded(async ({ request }) => {
-      const b = parse(TransferRequest, await json(request));
-      return HttpResponse.json({
-        mode: 'sync',
-        results: store.transfer('copy', b.items, b.destination, b.conflict),
-      });
-    }),
+    guarded(async ({ request }) => transferResponse('copy', parse(TransferRequest, await json(request)))),
   ),
   http.post(
     url('/files/move'),
-    guarded(async ({ request }) => {
-      const b = parse(TransferRequest, await json(request));
-      return HttpResponse.json({
-        mode: 'sync',
-        results: store.transfer('move', b.items, b.destination, b.conflict),
-      });
-    }),
+    guarded(async ({ request }) => transferResponse('move', parse(TransferRequest, await json(request)))),
   ),
   http.post(
     url('/files/delete'),
@@ -197,4 +236,87 @@ export const handlers: HttpHandler[] = [
     }),
   ),
   ...previewHandlers,
+
+  http.get(
+    url('/search'),
+    guarded(({ request }) => {
+      const q = parse(SearchQuery, query(request));
+      return HttpResponse.json(store.search(q, q.q, q.limit));
+    }),
+  ),
+
+  http.get(
+    url('/trash'),
+    guarded(({ request }) => {
+      const share = query(request).share;
+      if (!share) throw new MockError(400, 'BAD_REQUEST', 'Falta el recurso compartido');
+      return HttpResponse.json({ items: store.trashList(share) });
+    }),
+  ),
+  http.post(
+    url('/trash/restore'),
+    guarded(async ({ request }) => {
+      const b = parse(TrashActionRequest, await json(request));
+      store.trashRestore(b.share, b.ids);
+      return HttpResponse.json({ ok: true });
+    }),
+  ),
+  http.post(
+    url('/trash/purge'),
+    guarded(async ({ request }) => {
+      const b = parse(TrashActionRequest, await json(request));
+      store.trashPurge(b.share, b.ids);
+      return HttpResponse.json({ ok: true });
+    }),
+  ),
+
+  http.get(
+    url('/jobs'),
+    guarded(() => HttpResponse.json({ jobs: store.listJobs() })),
+  ),
+  http.get(
+    url('/jobs/:id'),
+    guarded(({ params }) => HttpResponse.json({ job: store.getJob(param(params, 'id')) })),
+  ),
+  http.get(
+    url('/jobs/:id/events'),
+    guarded(({ params }) => jobEvents(param(params, 'id'))),
+  ),
+  http.post(
+    url('/jobs/:id/cancel'),
+    guarded(({ params }) => HttpResponse.json({ job: store.cancelJob(param(params, 'id')) })),
+  ),
+
+  http.post(
+    url('/uploads'),
+    guarded(async ({ request }) => {
+      const b = parse(CreateUploadRequest, await json(request));
+      return HttpResponse.json(store.createUpload(b, b.name, b.size, b.conflict), { status: 201 });
+    }),
+  ),
+  http.get(
+    url('/uploads/:id'),
+    guarded(({ params }) => HttpResponse.json(store.uploadStatus(param(params, 'id')))),
+  ),
+  http.put(
+    url('/uploads/:id'),
+    guarded(async ({ request, params }) => {
+      const offset = Number(query(request).offset);
+      if (!Number.isInteger(offset) || offset < 0)
+        throw new MockError(400, 'BAD_REQUEST', 'offset no válido');
+      const data = new Uint8Array(await request.arrayBuffer());
+      return HttpResponse.json(store.appendUpload(param(params, 'id'), offset, data));
+    }),
+  ),
+  http.post(
+    url('/uploads/:id/complete'),
+    guarded(({ params }) => HttpResponse.json({ entry: store.completeUpload(param(params, 'id')) })),
+  ),
+  http.delete(
+    url('/uploads/:id'),
+    guarded(({ params }) => {
+      store.abortUpload(param(params, 'id'));
+      return HttpResponse.json({ ok: true });
+    }),
+  ),
 ];

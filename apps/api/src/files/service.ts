@@ -25,7 +25,7 @@ import { badRequest, conflict, HttpError } from '../lib/errors.js';
 import { compareEntries, toFileEntry } from '../storage/entries.js';
 import { LocalStorageProvider } from '../storage/local.js';
 import { freeName, sanitizeFileName } from '../storage/names.js';
-import type { EntryInfo, StorageProvider } from '../storage/provider.js';
+import type { EntryInfo, StorageProvider, TransferTarget } from '../storage/provider.js';
 
 export interface ResolvedRef {
   shareId: string;
@@ -40,6 +40,26 @@ export interface ResolvedRef {
 /** Hook used by POST /files/delete when `permanent` is false. Without it entries are deleted. */
 export interface TrashHandler {
   trash(user: User, ref: ResolvedRef): Promise<void>;
+}
+
+export interface TransferPlan {
+  kind: 'copy' | 'move';
+  dest: ResolvedRef;
+  sources: ResolvedRef[];
+  conflict: ConflictStrategy;
+}
+
+/** Performs the actual copy/move of one item once the target path is known to be free. */
+export type TransferExecutor = (
+  kind: 'copy' | 'move',
+  src: ResolvedRef,
+  target: TransferTarget,
+) => Promise<void>;
+
+/** Hook used by POST /files/copy|move to run large transfers as background jobs. */
+export interface TransferJobHandler {
+  /** Returns a job id when the transfer runs in the background, null to run it synchronously. */
+  maybeStart(user: User, plan: TransferPlan): Promise<string | null>;
 }
 
 export interface FilesServiceOptions {
@@ -75,6 +95,7 @@ export function itemError(err: unknown): string {
 export class FilesService {
   private readonly providers = new Map<string, LocalStorageProvider>();
   trash: TrashHandler | null = null;
+  jobs: TransferJobHandler | null = null;
 
   constructor(
     readonly shares: ShareService,
@@ -135,10 +156,10 @@ export class FilesService {
   }
 
   /**
-   * Synchronous copy/move. Permissions and structural errors (root, into
-   * itself) fail the whole request; file system errors are reported per item.
+   * Checks permissions and structural errors (root, into itself) for a
+   * copy/move; these fail the whole request.
    */
-  async transfer(kind: 'copy' | 'move', user: User, req: TransferInput): Promise<TransferItemResult[]> {
+  async prepareTransfer(kind: 'copy' | 'move', user: User, req: TransferInput): Promise<TransferPlan> {
     const dest = await this.destinationFolder(user, req.destination, 'write');
     const sources: ResolvedRef[] = [];
     for (const item of req.items) {
@@ -150,27 +171,81 @@ export class FilesService {
       }
       sources.push(src);
     }
+    return { kind, dest, sources, conflict: req.conflict };
+  }
 
-    const results: TransferItemResult[] = [];
-    for (const src of sources) {
-      const source = { share: src.shareId, path: src.virtualPath };
-      try {
-        results.push(await this.transferOne(kind, src, dest, req.conflict));
-      } catch (err) {
-        results.push({ source, status: 'failed', target: null, error: itemError(err) });
-      }
+  private conflictError(plan: TransferPlan, sources: FileRef[]): HttpError {
+    return conflict('Some entries already exist at the destination', {
+      conflicts: sources.map((source) => ({
+        name: basename(source.path),
+        source,
+        target: { share: plan.dest.shareId, path: joinPath(plan.dest.virtualPath, basename(source.path)) },
+      })),
+    });
+  }
+
+  /**
+   * Upfront version of the "every item conflicts" 409 for transfers that run
+   * as background jobs (the synchronous path detects it after trying).
+   */
+  async assertNotAllConflicting(plan: TransferPlan): Promise<void> {
+    if (plan.conflict !== 'fail') return;
+    for (const src of plan.sources) {
+      const name = basename(src.virtualPath);
+      const sameParent =
+        src.shareId === plan.dest.shareId && dirname(src.virtualPath) === plan.dest.virtualPath;
+      if (plan.kind === 'move' && sameParent) return;
+      if (!sameParent && !(await plan.dest.provider.exists(joinPath(plan.dest.virtualPath, name)))) return;
     }
+    throw this.conflictError(
+      plan,
+      plan.sources.map((s) => ({ share: s.shareId, path: s.virtualPath })),
+    );
+  }
 
-    if (req.conflict === 'fail' && results.every((r) => r.status === 'failed' && r.error === 'exists')) {
-      throw conflict('Some entries already exist at the destination', {
-        conflicts: results.map((r) => ({
-          name: basename(r.source.path),
-          source: r.source,
-          target: { share: dest.shareId, path: joinPath(dest.virtualPath, basename(r.source.path)) },
-        })),
-      });
+  /**
+   * Synchronous copy/move. Permissions and structural errors (root, into
+   * itself) fail the whole request; file system errors are reported per item.
+   */
+  async transfer(kind: 'copy' | 'move', user: User, req: TransferInput): Promise<TransferItemResult[]> {
+    return this.runTransfer(await this.prepareTransfer(kind, user, req));
+  }
+
+  async runTransfer(plan: TransferPlan): Promise<TransferItemResult[]> {
+    const results: TransferItemResult[] = [];
+    for (const src of plan.sources) {
+      results.push(await this.transferItem(plan.kind, src, plan.dest, plan.conflict));
+    }
+    if (plan.conflict === 'fail' && results.every((r) => r.status === 'failed' && r.error === 'exists')) {
+      throw this.conflictError(
+        plan,
+        results.map((r) => r.source),
+      );
     }
     return results;
+  }
+
+  /**
+   * Transfers one source applying the conflict strategy. File system errors
+   * become a `failed` result; `exec` replaces the provider copy/move (jobs use
+   * it to report progress). Errors thrown by `exec` with `rethrow` set (e.g.
+   * cancellation) propagate.
+   */
+  async transferItem(
+    kind: 'copy' | 'move',
+    src: ResolvedRef,
+    dest: ResolvedRef,
+    strategy: ConflictStrategy,
+    exec?: TransferExecutor,
+    rethrow?: (err: unknown) => boolean,
+  ): Promise<TransferItemResult> {
+    try {
+      return await this.transferOne(kind, src, dest, strategy, exec);
+    } catch (err) {
+      if (rethrow?.(err)) throw err;
+      const source = { share: src.shareId, path: src.virtualPath };
+      return { source, status: 'failed', target: null, error: itemError(err) };
+    }
   }
 
   private async transferOne(
@@ -178,6 +253,7 @@ export class FilesService {
     src: ResolvedRef,
     dest: ResolvedRef,
     strategy: ConflictStrategy,
+    exec?: TransferExecutor,
   ): Promise<TransferItemResult> {
     const source = { share: src.shareId, path: src.virtualPath };
     const info = await src.provider.stat(src.virtualPath);
@@ -214,7 +290,9 @@ export class FilesService {
       }
     }
 
-    await src.provider[kind](src.virtualPath, { provider: dest.provider, path: targetPath });
+    const target = { provider: dest.provider, path: targetPath };
+    if (exec) await exec(kind, src, target);
+    else await src.provider[kind](src.virtualPath, target);
     return { source, status: 'done', target: { share: dest.shareId, path: targetPath }, error: null };
   }
 
