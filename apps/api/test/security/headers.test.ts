@@ -40,6 +40,15 @@ describe('security headers', () => {
     }
   });
 
+  it('keeps the app CSP on 304 revalidations of index.html', async () => {
+    const first = await app.inject({ method: 'GET', url: '/' });
+    const etag = first.headers.etag as string;
+    expect(etag).toBeTruthy();
+    const revalidated = await app.inject({ method: 'GET', url: '/', headers: { 'if-none-match': etag } });
+    expect(revalidated.statusCode).toBe(304);
+    expect(revalidated.headers['content-security-policy']).toBe(APP_CSP);
+  });
+
   it('sets a no-render CSP on API and error responses', async () => {
     for (const url of ['/api/shares', '/api/nope', '/healthz', '/api/files?share=nope&path=/']) {
       const res = await app.inject({ method: 'GET', url });

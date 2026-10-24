@@ -1,3 +1,4 @@
+import { API_PREFIX } from '@wfb/contracts';
 import type { FastifyInstance } from 'fastify';
 
 /** The built SPA: only same-origin scripts; previews are embedded in same-origin iframes. */
@@ -33,20 +34,27 @@ export const PDF_CSP = FILE_CSP.replace(/; sandbox$/, '');
 
 export const fileCspFor = (mime: string) => (mime.startsWith('application/pdf') ? PDF_CSP : FILE_CSP);
 
+const isApiUrl = (url: string) =>
+  url === API_PREFIX ||
+  url.startsWith(`${API_PREFIX}/`) ||
+  url.startsWith(`${API_PREFIX}?`) ||
+  url.startsWith('/healthz');
+
 /**
  * Baseline headers on every response. Routes that serve user content set
  * their own `Content-Security-Policy` / `X-Frame-Options` before sending.
  */
 export function registerSecurityHeaders(app: FastifyInstance, opts: { hsts: boolean }): void {
-  app.addHook('onSend', async (_request, reply, payload) => {
+  app.addHook('onSend', async (request, reply, payload) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'same-origin');
     reply.header('Cross-Origin-Opener-Policy', 'same-origin');
     reply.header('Cross-Origin-Resource-Policy', 'same-origin');
     reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
     if (!reply.hasHeader('Content-Security-Policy')) {
-      const type = String(reply.getHeader('content-type') ?? '');
-      reply.header('Content-Security-Policy', type.startsWith('text/html') ? APP_CSP : API_CSP);
+      // Chosen by URL, not Content-Type: a 304 for index.html has no type, and
+      // browsers apply its headers to the cached page.
+      reply.header('Content-Security-Policy', isApiUrl(request.url) ? API_CSP : APP_CSP);
     }
     if (!reply.hasHeader('X-Frame-Options')) reply.header('X-Frame-Options', 'DENY');
     if (opts.hsts) reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
