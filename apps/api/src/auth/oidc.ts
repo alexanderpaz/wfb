@@ -58,7 +58,11 @@ export function groupsFromClaim(value: unknown): string[] {
 
 export function userFromClaims(claims: Record<string, unknown>, groupsClaim: string): User {
   const sub = claimString(claims.sub);
-  const username = (claimString(claims.preferred_username) ?? claimString(claims.email) ?? sub)?.toLowerCase();
+  const username = (
+    claimString(claims.preferred_username) ??
+    claimString(claims.email) ??
+    sub
+  )?.toLowerCase();
   if (!username) throw new OidcError('oidc_failed', 'OIDC claims without a usable username');
   return {
     id: `oidc:${username}`,

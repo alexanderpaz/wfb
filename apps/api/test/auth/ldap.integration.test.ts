@@ -46,7 +46,11 @@ describe.skipIf(!ldapUp)(`LDAP integration (OpenLDAP at ${LDAP_URL})`, () => {
   });
 
   it('resolves groups through uniqueMember when memberOf is unavailable', async () => {
-    const user = await authenticateDirectory({ ...directory, groupAttribute: 'nonexistentAttr' }, 'carol', 'carol123');
+    const user = await authenticateDirectory(
+      { ...directory, groupAttribute: 'nonexistentAttr' },
+      'carol',
+      'carol123',
+    );
     expect(user?.groups).toEqual(['finance', 'staff']);
   });
 
@@ -63,9 +67,9 @@ describe.skipIf(!ldapUp)(`LDAP integration (OpenLDAP at ${LDAP_URL})`, () => {
   });
 
   it('reports a misconfigured service account as unavailable', async () => {
-    await expect(authenticateDirectory({ ...directory, bindPassword: 'wrong' }, 'alice', 'alice123')).rejects.toBeInstanceOf(
-      DirectoryUnavailableError,
-    );
+    await expect(
+      authenticateDirectory({ ...directory, bindPassword: 'wrong' }, 'alice', 'alice123'),
+    ).rejects.toBeInstanceOf(DirectoryUnavailableError);
   });
 
   it('logs in end to end through the API', async () => {
@@ -90,6 +94,8 @@ describe.skipIf(!ldapUp)(`LDAP integration (OpenLDAP at ${LDAP_URL})`, () => {
 describe('LDAP connectivity', () => {
   it('reports an unreachable server as unavailable', async () => {
     const down = { ...directory, url: 'ldap://127.0.0.1:1' };
-    await expect(authenticateDirectory(down, 'alice', 'alice123')).rejects.toBeInstanceOf(DirectoryUnavailableError);
+    await expect(authenticateDirectory(down, 'alice', 'alice123')).rejects.toBeInstanceOf(
+      DirectoryUnavailableError,
+    );
   });
 });

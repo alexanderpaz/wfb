@@ -19,7 +19,8 @@ class ResultError extends Error {
   }
 }
 
-const unescape = (v: string) => v.replace(/\\([0-9a-f]{2})/gi, (_, h: string) => String.fromCharCode(parseInt(h, 16)));
+const unescape = (v: string) =>
+  v.replace(/\\([0-9a-f]{2})/gi, (_, h: string) => String.fromCharCode(parseInt(h, 16)));
 
 /**
  * In-memory directory understanding the handful of filters the auth module
@@ -55,36 +56,35 @@ export class FakeDirectory {
 
   factory = (): LdapClient => {
     const id = ++this.seq;
-    const dir = this;
     const check = () => {
-      if (dir.unavailable) throw Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' });
+      if (this.unavailable) throw Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' });
     };
     return {
-      async startTLS() {
-        dir.calls.push({ op: 'startTLS', client: id });
+      startTLS: async () => {
+        this.calls.push({ op: 'startTLS', client: id });
         check();
       },
-      async bind(dn: string, password?: string) {
-        dir.calls.push({ op: 'bind', arg: dn, client: id });
+      bind: async (dn: string, password?: string) => {
+        this.calls.push({ op: 'bind', arg: dn, client: id });
         check();
-        const upn = dir.upns.get(dn.toLowerCase());
+        const upn = this.upns.get(dn.toLowerCase());
         if (upn && password && upn.password === password) return;
-        const entry = dir.entries.find((e) => e.dn.toLowerCase() === dn.toLowerCase());
+        const entry = this.entries.find((e) => e.dn.toLowerCase() === dn.toLowerCase());
         if (entry?.password && password && entry.password === password) return;
         throw new ResultError(49, 'InvalidCredentialsError');
       },
-      async search(_base: string, options: SearchOptions) {
+      search: async (_base: string, options: SearchOptions) => {
         const filter = String(options.filter);
-        dir.calls.push({ op: 'search', arg: filter, client: id });
+        this.calls.push({ op: 'search', arg: filter, client: id });
         check();
-        const results = dir.evaluate(filter);
+        const results = this.evaluate(filter);
         if (options.sizeLimit && results.length > options.sizeLimit) {
           throw new ResultError(4, 'SizeLimitExceededError');
         }
         return { searchEntries: results };
       },
-      async unbind() {
-        dir.calls.push({ op: 'unbind', client: id });
+      unbind: async () => {
+        this.calls.push({ op: 'unbind', client: id });
       },
     };
   };

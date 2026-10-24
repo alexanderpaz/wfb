@@ -85,13 +85,10 @@ export default fp<ModuleOptions>(
       return session;
     }
 
-    app.get(
-      `${API_PREFIX}/auth/providers`,
-      async (): Promise<AuthProvidersResponse> => ({
-        directory: config.directory ? { kind: config.directory.kind, label: config.directory.label } : null,
-        oidc: config.oidc ? { label: config.oidc.label, loginUrl: OIDC_LOGIN_PATH } : null,
-      }),
-    );
+    app.get(`${API_PREFIX}/auth/providers`, async (): Promise<AuthProvidersResponse> => ({
+      directory: config.directory ? { kind: config.directory.kind, label: config.directory.label } : null,
+      oidc: config.oidc ? { label: config.oidc.label, loginUrl: OIDC_LOGIN_PATH } : null,
+    }));
 
     app.post(DIRECTORY_LOGIN_PATH, async (request, reply): Promise<MeResponse> => {
       const directory = config.directory;
@@ -142,7 +139,10 @@ export default fp<ModuleOptions>(
         return reply.redirect(returnTo);
       } catch (err) {
         const code = err instanceof OidcError ? err.code : 'oidc_failed';
-        request.log.warn({ err: err instanceof OidcError ? (err.cause ?? err) : err, code }, 'oidc callback failed');
+        request.log.warn(
+          { err: err instanceof OidcError ? (err.cause ?? err) : err, code },
+          'oidc callback failed',
+        );
         return reply.redirect(`/?authError=${code}`);
       }
     });

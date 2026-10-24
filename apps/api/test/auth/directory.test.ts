@@ -82,7 +82,11 @@ describe('authenticateDirectory (ldap)', () => {
   });
 
   it('binds anonymously when there is no service account', async () => {
-    const user = await auth('alice', 'alice123', { ...ldapConfig, bindDn: undefined, bindPassword: undefined });
+    const user = await auth('alice', 'alice123', {
+      ...ldapConfig,
+      bindDn: undefined,
+      bindPassword: undefined,
+    });
     expect(user?.username).toBe('alice');
     expect(dir.calls.filter((c) => c.op === 'bind').map((c) => c.arg)).toEqual([
       'uid=alice,ou=people,dc=example,dc=org',
@@ -113,7 +117,8 @@ describe('authenticateDirectory (ldap)', () => {
 
 describe('defaultClientFactory', () => {
   it('only uses implicit TLS for ldaps:// urls', () => {
-    const secure = (url: string) => (defaultClientFactory({ ...ldapConfig, url }) as unknown as { secure: boolean }).secure;
+    const secure = (url: string) =>
+      (defaultClientFactory({ ...ldapConfig, url }) as unknown as { secure: boolean }).secure;
     expect(secure('ldap://localhost:389')).toBe(false);
     expect(secure('ldaps://localhost:636')).toBe(true);
   });
@@ -169,9 +174,16 @@ describe('authenticateDirectory (ad)', () => {
 
   it('uses the service account when configured', async () => {
     dir.add({ dn: 'CN=svc,DC=corp,DC=local', password: 'svc', attrs: { cn: 'svc' } });
-    const user = await auth('jdoe', 'Secret1!', { ...adConfig, bindDn: 'CN=svc,DC=corp,DC=local', bindPassword: 'svc' });
+    const user = await auth('jdoe', 'Secret1!', {
+      ...adConfig,
+      bindDn: 'CN=svc,DC=corp,DC=local',
+      bindPassword: 'svc',
+    });
     expect(user?.username).toBe('jdoe');
-    expect(dir.calls.filter((c) => c.op === 'bind').map((c) => c.arg)).toEqual(['CN=svc,DC=corp,DC=local', jdoeDn]);
+    expect(dir.calls.filter((c) => c.op === 'bind').map((c) => c.arg)).toEqual([
+      'CN=svc,DC=corp,DC=local',
+      jdoeDn,
+    ]);
   });
 
   it('keeps direct groups when the nested search fails', async () => {

@@ -12,14 +12,21 @@ describe('persistUser', () => {
     await persistUser({ user: { upsert } } as unknown as PrismaClient, alice, 'alice', logger());
     const arg = upsert.mock.calls[0]![0];
     expect(arg.where).toEqual({ provider_externalId: { provider: 'ldap', externalId: 'alice' } });
-    expect(arg.create).toMatchObject({ provider: 'ldap', externalId: 'alice', username: 'alice', groups: ['staff'] });
+    expect(arg.create).toMatchObject({
+      provider: 'ldap',
+      externalId: 'alice',
+      username: 'alice',
+      groups: ['staff'],
+    });
     expect(arg.update.lastLoginAt).toBeInstanceOf(Date);
   });
 
   it('logs and swallows database errors', async () => {
     const log = logger();
     const upsert = vi.fn().mockRejectedValue(new Error('db down'));
-    await expect(persistUser({ user: { upsert } } as unknown as PrismaClient, alice, 'alice', log)).resolves.toBeUndefined();
+    await expect(
+      persistUser({ user: { upsert } } as unknown as PrismaClient, alice, 'alice', log),
+    ).resolves.toBeUndefined();
     expect(log.warn).toHaveBeenCalledOnce();
   });
 

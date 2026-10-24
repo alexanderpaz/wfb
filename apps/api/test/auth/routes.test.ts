@@ -246,7 +246,11 @@ describe('session routes and CSRF', () => {
     });
     expect(wrong.statusCode).toBe(403);
 
-    const ok = await app.inject({ method: 'POST', url: '/api/test/echo', headers: withSession(cookie, csrf) });
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/api/test/echo',
+      headers: withSession(cookie, csrf),
+    });
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toEqual({ user: 'alice' });
   });
@@ -257,10 +261,18 @@ describe('session routes and CSRF', () => {
   });
 
   it('logout requires csrf, destroys the session and clears the cookie', async () => {
-    const denied = await app.inject({ method: 'POST', url: '/api/auth/logout', headers: withSession(cookie) });
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/api/auth/logout',
+      headers: withSession(cookie),
+    });
     expect(denied.statusCode).toBe(403);
 
-    const res = await app.inject({ method: 'POST', url: '/api/auth/logout', headers: withSession(cookie, csrf) });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/logout',
+      headers: withSession(cookie, csrf),
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true });
     const cleared = sessionCookie(res)!;

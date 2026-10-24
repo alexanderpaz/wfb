@@ -222,7 +222,11 @@ describe('GET /api/auth/oidc/callback', () => {
     });
     const b = res.cookies.find((c) => c.name === SESSION_COOKIE)!.value;
     expect(b).not.toBe(a);
-    const old = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: `${SESSION_COOKIE}=${a}` } });
+    const old = await app.inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      headers: { cookie: `${SESSION_COOKIE}=${a}` },
+    });
     expect(old.statusCode).toBe(401);
   });
 });
@@ -250,7 +254,13 @@ describe('OIDC helpers', () => {
 
   it('derives the username from preferred_username, email or sub', () => {
     expect(userFromClaims({ sub: 'S1', email: 'X@y.org' }, 'groups').username).toBe('x@y.org');
-    expect(userFromClaims({ sub: 'S1' }, 'groups')).toMatchObject({ username: 's1', email: null, groups: [] });
-    expect(userFromClaims({ sub: 's', preferred_username: 'u', roles: ['r'] }, 'roles').groups).toEqual(['r']);
+    expect(userFromClaims({ sub: 'S1' }, 'groups')).toMatchObject({
+      username: 's1',
+      email: null,
+      groups: [],
+    });
+    expect(userFromClaims({ sub: 's', preferred_username: 'u', roles: ['r'] }, 'roles').groups).toEqual([
+      'r',
+    ]);
   });
 });
