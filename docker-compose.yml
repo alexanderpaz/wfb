@@ -27,6 +27,8 @@ services:
     environment:
       - SERVICE_FQDN_APP_3000
       - APP_URL=${SERVICE_URL_APP}
+      # Optional override, e.g. https://files.example.com, when SERVICE_URL_APP is not the public domain.
+      - PUBLIC_URL=${PUBLIC_URL:-}
       - NODE_ENV=production
       - TZ=${TZ:-UTC}
       - LOG_LEVEL=${LOG_LEVEL:-info}

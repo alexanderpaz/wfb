@@ -20,6 +20,11 @@ const EnvSchema = z.object({
   LOG_PRETTY: bool(false),
   /** Seconds to wait for in-flight requests on SIGTERM before forcing exit. */
   SHUTDOWN_TIMEOUT_SECONDS: z.coerce.number().positive().default(25),
+  /**
+   * Explicit public URL; wins over APP_URL. Coolify derives SERVICE_URL_APP (passed as APP_URL)
+   * from the first entry of the app's domain list, which may be its auto-generated domain.
+   */
+  PUBLIC_URL: optionalString,
   /** Public URL. Coolify provides it through SERVICE_URL_APP / SERVICE_FQDN_APP. */
   APP_URL: optionalString,
   SERVICE_URL_APP: optionalString,
@@ -140,7 +145,12 @@ function normalizeUrl(value: string): string {
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
   const env = EnvSchema.parse(source);
   const isProd = env.NODE_ENV === 'production';
-  const rawUrl = env.APP_URL ?? env.SERVICE_URL_APP ?? env.SERVICE_FQDN_APP ?? `http://localhost:${env.PORT}`;
+  const rawUrl =
+    env.PUBLIC_URL ??
+    env.APP_URL ??
+    env.SERVICE_URL_APP ??
+    env.SERVICE_FQDN_APP ??
+    `http://localhost:${env.PORT}`;
   const appUrl = normalizeUrl(rawUrl);
 
   if (isProd && !env.SESSION_SECRET) {

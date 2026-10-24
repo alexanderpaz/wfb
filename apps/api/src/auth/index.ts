@@ -133,6 +133,14 @@ export default fp<ModuleOptions>(
     app.get(OIDC_LOGIN_PATH, async (request, reply) => {
       if (!oidc) throw notFound('OIDC login is not enabled');
       const { returnTo } = (request.query ?? {}) as { returnTo?: unknown };
+      const appHost = new URL(config.appUrl).host;
+      if (request.host !== appHost) {
+        // The IdP only accepts the redirect_uri derived from APP_URL, so a different public host fails there.
+        request.log.warn(
+          { requestHost: request.host, appUrl: config.appUrl, redirectUri: config.oidc?.redirectUri },
+          'oidc login requested on a host that does not match APP_URL',
+        );
+      }
       try {
         const { url, state } = await oidc.authorizationUrl(returnTo);
         reply.setCookie(OIDC_STATE_COOKIE, state, { ...oidcStateCookieOptions, maxAge: 600 });
