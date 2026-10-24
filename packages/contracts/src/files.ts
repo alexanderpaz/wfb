@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { QueryBoolean } from './common.js';
 import { VirtualPath } from './paths.js';
 
 export const Permission = z.enum(['read', 'write', 'delete']);
@@ -149,7 +150,7 @@ export type UploadSession = z.infer<typeof UploadSession>;
  */
 
 /** GET /api/files/download?share=&path=  — supports HTTP Range. */
-export const DownloadQuery = FileRef.extend({ inline: z.coerce.boolean().optional() });
+export const DownloadQuery = FileRef.extend({ inline: QueryBoolean.optional() });
 export type DownloadQuery = z.infer<typeof DownloadQuery>;
 
 /** GET /api/search?share=&path=&q= — recursive name search. */

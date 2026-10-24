@@ -1,0 +1,348 @@
+/* Auth feature: login screen, loading gate and account menu (Fluent / Windows 11 look). */
+
+.wfb-login {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, var(--accent-soft), transparent 60%),
+    radial-gradient(900px 500px at 110% 110%, #e8e0f7, transparent 55%), var(--bg);
+}
+
+.wfb-login__card {
+  width: 100%;
+  max-width: 380px;
+  padding: 32px 32px 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow:
+    0 8px 16px rgba(0, 0, 0, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wfb-login__header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+
+.wfb-login__title {
+  margin: 8px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.wfb-login__subtitle,
+.wfb-login__provider {
+  margin: 0;
+  color: var(--muted);
+}
+
+.wfb-login__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wfb-login__empty {
+  margin: 0;
+  color: var(--muted);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.wfb-login__divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.wfb-login__divider::before,
+.wfb-login__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.wfb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wfb-field label {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.wfb-field input {
+  font: inherit;
+  height: 32px;
+  padding: 0 10px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom-color: #8a8a8a;
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.1s;
+}
+
+.wfb-field input:hover:not(:disabled) {
+  background: #fafafa;
+}
+
+.wfb-field input:focus {
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 0;
+}
+
+.wfb-field input:disabled {
+  opacity: 0.6;
+}
+
+.wfb-btn {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 16px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom-color: #c4c4c4;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.wfb-btn:hover:not(:disabled) {
+  background: #f6f6f6;
+}
+
+.wfb-btn:active:not(:disabled) {
+  background: #f0f0f0;
+  color: var(--muted);
+}
+
+.wfb-btn:focus-visible,
+.wfb-usermenu__button:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+.wfb-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.wfb-btn--primary {
+  margin-top: 4px;
+  color: #fff;
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.wfb-btn--primary:hover:not(:disabled) {
+  background: #1975c5;
+}
+
+.wfb-btn--primary:active:not(:disabled) {
+  background: #3183ca;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.wfb-btn--oidc {
+  width: 100%;
+}
+
+.wfb-alert {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-size: 13px;
+}
+
+.wfb-alert--error {
+  color: var(--danger);
+  background: #fde7e9;
+  border-color: #f4bfc4;
+}
+
+.wfb-alert--info {
+  color: var(--text);
+  background: var(--hover);
+  border-color: var(--accent-soft);
+}
+
+.wfb-auth-loading {
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.wfb-spinner {
+  display: inline-block;
+  border-radius: 50%;
+  border: 3px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: wfb-spin 0.8s linear infinite;
+}
+
+.wfb-spinner--md {
+  width: 32px;
+  height: 32px;
+}
+
+.wfb-spinner--sm {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+  border-color: rgba(255, 255, 255, 0.4);
+  border-top-color: currentColor;
+}
+
+@keyframes wfb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wfb-spinner {
+    animation-duration: 2s;
+  }
+}
+
+/* Account menu */
+
+.wfb-usermenu {
+  position: relative;
+  display: inline-block;
+}
+
+.wfb-usermenu__button {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px 0 4px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.wfb-usermenu__button:hover,
+.wfb-usermenu__button[aria-expanded='true'] {
+  background: var(--hover);
+}
+
+.wfb-usermenu__name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wfb-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  flex: none;
+}
+
+.wfb-avatar--lg {
+  width: 40px;
+  height: 40px;
+  font-size: 15px;
+}
+
+.wfb-usermenu__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 100;
+  width: 280px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.14);
+}
+
+.wfb-usermenu__identity {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.wfb-usermenu__identity > div {
+  min-width: 0;
+}
+
+.wfb-usermenu__display {
+  font-weight: 600;
+}
+
+.wfb-usermenu__meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wfb-usermenu__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.wfb-usermenu__groups ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 120px;
+  overflow: auto;
+}
+
+.wfb-usermenu__groups li {
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 12px;
+}

@@ -40,6 +40,7 @@ services:
       - OIDC_SCOPES=${OIDC_SCOPES:-openid profile email groups}
       - OIDC_GROUPS_CLAIM=${OIDC_GROUPS_CLAIM:-groups}
       - OIDC_LABEL=${OIDC_LABEL:-Authentik}
+      - OIDC_TOKEN_AUTH_METHOD=${OIDC_TOKEN_AUTH_METHOD:-client_secret_post}
       # Storage
       - SHARES_CONFIG=/config/shares.yaml
       - HOME_ROOT=${HOME_ROOT:-}

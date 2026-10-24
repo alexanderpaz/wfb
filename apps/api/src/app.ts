@@ -5,11 +5,13 @@ import authModule from './auth/index.js';
 import type { Config } from './config.js';
 import filesModule from './files/index.js';
 import { registerHealth } from './health.js';
+import opsModule from './jobs/index.js';
 import './lib/auth-context.js';
 import { createPrisma } from './lib/db.js';
 import { registerErrorHandler } from './lib/errors.js';
 import { createStore } from './lib/kv.js';
 import type { ModuleOptions, Services } from './lib/module.js';
+import previewModule from './preview/index.js';
 import { registerStatic } from './static.js';
 
 export interface BuildOptions {
@@ -57,6 +59,8 @@ export async function buildApp({
     await app.register(authModule, moduleOptions);
   }
   await app.register(filesModule, moduleOptions);
+  await app.register(previewModule, moduleOptions);
+  await app.register(opsModule, moduleOptions);
 
   await registerStatic(app, config.webDist);
   return app;

@@ -14,6 +14,7 @@ COPY apps/api/package.json apps/api/
 COPY apps/api/prisma apps/api/prisma
 COPY apps/web/package.json apps/web/
 COPY packages/contracts/package.json packages/contracts/
+COPY e2e/package.json e2e/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --filter '!@wfb/e2e'
 COPY . .
 RUN pnpm --filter @wfb/web build && pnpm --filter @wfb/api build

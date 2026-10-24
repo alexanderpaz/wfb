@@ -1,9 +1,14 @@
-/** Root component. Phase 1 agents replace this with the login gate and the explorer. */
+import { useQueryClient } from '@tanstack/react-query';
+import { Explorer } from './components/explorer';
+import { AuthGate, AuthProvider, UserMenu } from './features/auth';
+
 export function App() {
+  const queryClient = useQueryClient();
   return (
-    <main className="placeholder">
-      <h1>Explorador de archivos</h1>
-      <p>Base del proyecto lista.</p>
-    </main>
+    <AuthProvider onSignOut={() => queryClient.clear()}>
+      <AuthGate>
+        <Explorer headerRight={<UserMenu />} />
+      </AuthGate>
+    </AuthProvider>
   );
 }
