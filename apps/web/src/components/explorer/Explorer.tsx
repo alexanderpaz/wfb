@@ -32,9 +32,12 @@ import { DRAG_MIME, dragPayload, dropLabel, resolveDrop } from './dnd';
 import { errorMessage } from './errors';
 import { FileView, type DragProps, type DropProps } from './FileView';
 import { Icon } from './icons';
-import { NavTree, nodeKey } from './NavTree';
+import { NavTree, nodeKey, TRASH_ROOT_KEY } from './NavTree';
+import { SearchView } from './SearchView';
 import { filterEntries, sortEntries } from './sort';
 import { StatusBar } from './StatusBar';
+import { TransferPanel } from './TransferPanel';
+import { trashQueryKey, TrashView } from './TrashView';
 import { listKey, useFileOps } from './useFileOps';
 import { useNavigation, type Location } from './useNavigation';
 import './explorer.css';
@@ -46,6 +49,8 @@ export interface ExplorerProps {
   onOpenFile?: (entry: FileEntry, share: string) => void;
   /** Rendered at the right end of the command bar (e.g. the user menu). */
   headerRight?: ReactNode;
+  /** Large-icon view thumbnail for an entry; `fallback` is the regular file-type icon. */
+  renderThumbnail?: (entry: FileEntry, share: string, fallback: ReactNode) => ReactNode;
 }
 
 interface Selection {
@@ -80,6 +85,10 @@ const SORT_LABELS: Record<SortKey, string> = {
 };
 
 const VIEW_LABELS: Record<ViewMode, string> = { details: 'Detalles', icons: 'Iconos grandes', list: 'Lista' };
+
+/** Server-side recursive search starts after this pause in typing (or on Enter). */
+const SEARCH_DEBOUNCE_MS = 400;
+const SEARCH_MIN_CHARS = 2;
 
 function defaultOpenFile(entry: FileEntry, share: string) {
   window.open(api.downloadUrl({ share, path: entry.path }, true), '_blank', 'noopener');
@@ -118,7 +127,12 @@ function useNarrow(ref: React.RefObject<HTMLElement>, breakpoint: number) {
   return narrow;
 }
 
-export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRight }: ExplorerProps) {
+export function Explorer({
+  renderPreview,
+  onOpenFile = defaultOpenFile,
+  headerRight,
+  renderThumbnail,
+}: ExplorerProps) {
   const nav = useNavigation();
   const { location } = nav;
   const prefs = useExplorerPrefs();
@@ -138,8 +152,18 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
     (id: string, perm: Share['permissions'][number]) => !!shareById(id)?.permissions.includes(perm),
     [shareById],
   );
-  const canWrite = can(location.share, 'write');
-  const canDelete = can(location.share, 'delete');
+  const inTrash = location.view === 'trash';
+  const canWrite = can(location.share, 'write') && !inTrash;
+  const canDelete = can(location.share, 'delete') && !inTrash;
+  const trashShares = useMemo(
+    () =>
+      shares.filter(
+        (s) =>
+          s.permissions.includes('read') &&
+          (s.permissions.includes('write') || s.permissions.includes('delete')),
+      ),
+    [shares],
+  );
 
   const { replace: replaceLocation, navigate } = nav;
   useEffect(() => {
@@ -149,7 +173,12 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
   const listQ = useQuery({
     queryKey: listKey(location.share, location.path),
     queryFn: () => api.list(location),
-    enabled: !!share,
+    enabled: !!share && !inTrash,
+  });
+  const trashQ = useQuery({
+    queryKey: trashQueryKey(location.share),
+    queryFn: () => api.trash(location.share),
+    enabled: !!share && inTrash,
   });
 
   useEffect(() => {
@@ -171,6 +200,7 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
 
   // ---- view state ---------------------------------------------------------
   const [search, setSearch] = useState('');
+  const [serverQuery, setServerQuery] = useState<string | null>(null);
   const [sel, setSel] = useState<Selection>(EMPTY_SELECTION);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
@@ -179,7 +209,28 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const pendingSelect = useRef<string[] | null>(null);
 
-  const allEntries = useMemo(() => listQ.data?.entries ?? [], [listQ.data]);
+  useEffect(() => {
+    const q = search.trim();
+    if (q.length < SEARCH_MIN_CHARS) {
+      setServerQuery(null);
+      return;
+    }
+    const timer = setTimeout(() => setServerQuery(q), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
+  const searching = serverQuery !== null && !inTrash;
+  const searchQ = useQuery({
+    queryKey: ['search', location.share, location.path, serverQuery],
+    queryFn: ({ signal }) =>
+      api.search({ share: location.share, path: location.path, q: serverQuery! }, signal),
+    enabled: !!share && searching,
+    staleTime: 15_000,
+  });
+
+  const allEntries = useMemo(
+    () => (inTrash || searching ? [] : (listQ.data?.entries ?? [])),
+    [listQ.data, inTrash, searching],
+  );
   const entries = useMemo(
     () => sortEntries(filterEntries(allEntries, search), prefs.sortKey, prefs.sortDir),
     [allEntries, search, prefs.sortKey, prefs.sortDir],
@@ -199,15 +250,17 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
     [clipboard, location.share],
   );
 
-  const locKey = nodeKey(location.share, location.path);
+  const locKey = `${nodeKey(location.share, location.path)}${inTrash ? '#trash' : ''}`;
   useEffect(() => {
     setSearch('');
+    setServerQuery(null);
     setRenaming(null);
     setMenu(null);
     setSel(EMPTY_SELECTION);
     setNavOverlay(false);
     setExpanded((prev) => {
       const next = new Set(prev);
+      if (inTrash) next.add(TRASH_ROOT_KEY);
       let acc = '/';
       next.add(nodeKey(location.share, acc));
       for (const seg of pathSegments(location.path).slice(0, -1)) {
@@ -238,6 +291,7 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
   const current: FileRef = location;
 
   const goUp = () => {
+    if (inTrash) return nav.navigate({ share: location.share, path: '/' });
     if (location.path === '/') return;
     pendingSelect.current = [location.path];
     nav.navigate({ share: location.share, path: dirname(location.path) });
@@ -246,6 +300,11 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
   const open = (entry: FileEntry) => {
     if (entry.type === 'directory') navigate({ share: location.share, path: entry.path });
     else onOpenFile(entry, location.share);
+  };
+
+  const submitSearch = (value: string) => {
+    const q = value.trim();
+    setServerQuery(q.length > 0 ? q : null);
   };
 
   const openSelection = () => {
@@ -786,9 +845,26 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
       />
     );
   else if (shares.length === 0) body = <PaneMessage title="No tiene acceso a ningún recurso compartido." />;
+  else if (inTrash && share) body = <TrashView share={share} />;
+  else if (searching)
+    body = (
+      <SearchView
+        scopeName={folderName}
+        shareName={share?.name ?? location.share}
+        query={serverQuery!}
+        data={searchQ.data}
+        loading={searchQ.isFetching}
+        error={searchQ.error}
+        onOpen={open}
+        onRetry={() => void searchQ.refetch()}
+      />
+    );
   else
     body = (
       <FileView
+        renderBigIcon={
+          renderThumbnail ? (entry, fallback) => renderThumbnail(entry, location.share, fallback) : undefined
+        }
         label={folderName}
         entries={entries}
         view={prefs.view}
@@ -883,6 +959,8 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
         forwardLabel={describeLoc(nav.forwardTarget)}
         search={search}
         onSearch={setSearch}
+        onSearchSubmit={submitSearch}
+        searchDisabled={inTrash}
         onBack={nav.back}
         onForward={nav.forward}
         onUp={goUp}
@@ -910,6 +988,7 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
                 })
               }
               onNavigate={navigate}
+              trashShares={trashShares}
               dropProps={(loc, name) => dropProps(loc, name, 'tree', nodeKey(loc.share, loc.path))}
             />
           </>
@@ -930,7 +1009,13 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
         )}
       </div>
       <StatusBar
-        total={entries.length}
+        total={
+          inTrash
+            ? (trashQ.data?.items.length ?? 0)
+            : searching
+              ? (searchQ.data?.results.length ?? 0)
+              : entries.length
+        }
         selection={selection}
         readOnly={!!share && !canWrite}
         view={prefs.view}
@@ -968,6 +1053,7 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
         />
       )}
       {ops.dialogs}
+      <TransferPanel />
       {drop && (
         <div className="wfb-drop-hint" style={{ left: drop.x + 14, top: drop.y + 18 }} aria-hidden="true">
           {drop.label}

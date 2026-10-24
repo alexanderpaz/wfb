@@ -16,6 +16,10 @@ const EnvSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  /** Human readable logs through pino-pretty (development only, when installed). */
+  LOG_PRETTY: bool(false),
+  /** Seconds to wait for in-flight requests on SIGTERM before forcing exit. */
+  SHUTDOWN_TIMEOUT_SECONDS: z.coerce.number().positive().default(25),
   /** Public URL. Coolify provides it through SERVICE_URL_APP / SERVICE_FQDN_APP. */
   APP_URL: optionalString,
   SERVICE_URL_APP: optionalString,
@@ -57,6 +61,23 @@ const EnvSchema = z.object({
   OFFICE_PREVIEW: bool(false),
   SOFFICE_PATH: z.string().default('soffice'),
   LOGIN_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(10),
+  /**
+   * Proxy addresses/CIDRs whose X-Forwarded-For is believed for the client IP (login rate
+   * limit, audit). `true` trusts any sender, which lets clients spoof their IP. Hop counts are
+   * not accepted: Fastify treats them as "trust nothing".
+   */
+  TRUST_PROXY: z
+    .string()
+    .optional()
+    .transform((v): boolean | string => {
+      const value = v?.trim() ?? '';
+      if (value === '' || value === 'false') return false;
+      if (value === 'true') return true;
+      return value;
+    })
+    .refine((v) => typeof v !== 'string' || !/^\d+$/.test(v), {
+      message: 'TRUST_PROXY takes proxy addresses or CIDRs, not a hop count',
+    }),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -67,6 +88,8 @@ export interface Config {
   host: string;
   port: number;
   logLevel: Env['LOG_LEVEL'];
+  logPretty: boolean;
+  shutdownTimeoutMs: number;
   appUrl: string;
   webDist: string | undefined;
   session: { secret: string; ttlSeconds: number; secureCookie: boolean };
@@ -105,6 +128,8 @@ export interface Config {
   };
   preview: { office: boolean; sofficePath: string };
   loginRateLimitPerMinute: number;
+  /** Fastify `trustProxy`: boolean or comma-separated addresses/CIDRs. */
+  trustProxy: boolean | string;
 }
 
 function normalizeUrl(value: string): string {
@@ -164,6 +189,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     host: env.HOST,
     port: env.PORT,
     logLevel: env.LOG_LEVEL,
+    logPretty: env.LOG_PRETTY,
+    shutdownTimeoutMs: env.SHUTDOWN_TIMEOUT_SECONDS * 1000,
     appUrl,
     webDist: env.WEB_DIST,
     session: {
@@ -185,5 +212,6 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     },
     preview: { office: env.OFFICE_PREVIEW, sofficePath: env.SOFFICE_PATH },
     loginRateLimitPerMinute: env.LOGIN_RATE_LIMIT_PER_MINUTE,
+    trustProxy: env.TRUST_PROXY,
   };
 }

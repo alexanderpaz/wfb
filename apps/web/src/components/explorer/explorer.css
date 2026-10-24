@@ -605,6 +605,21 @@
   text-align: center;
 }
 
+.wfb-view-icons .wfb-item-thumb {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 72px;
+}
+
+.wfb-view-icons .wfb-item-thumb img {
+  max-width: 96px;
+  max-height: 72px;
+  object-fit: contain;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+}
+
 .wfb-view-icons .wfb-item-name {
   display: -webkit-box;
   -webkit-line-clamp: 2;

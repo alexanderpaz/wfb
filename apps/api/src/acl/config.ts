@@ -1,5 +1,5 @@
 import { Permission } from '@wfb/contracts';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
@@ -124,6 +124,16 @@ export function loadSharesConfig(
   file: string,
   opts: { cwd?: string; homeRootOverride?: string } = {},
 ): SharesConfig {
+  const st = statSync(file, { throwIfNoEntry: false });
+  if (!st) throw new SharesConfigError(file, 'file not found');
+  if (st.isDirectory()) {
+    // Docker creates an empty directory when a bind-mounted host file does not exist.
+    throw new SharesConfigError(
+      file,
+      'it is a directory, not a file. If it is a Docker bind mount, the host file does not exist ' +
+        '(Docker created an empty directory in its place): create it and mount it from an absolute host path.',
+    );
+  }
   const text = readFileSync(file, 'utf8');
   let raw: unknown;
   try {
