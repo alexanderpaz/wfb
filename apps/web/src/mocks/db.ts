@@ -6,9 +6,12 @@ import {
   type ConflictStrategy,
   type FileEntry,
   type FileRef,
+  type Job,
   type Permission,
   type Share,
   type TransferItemResult,
+  type TrashItem,
+  type UploadSession,
   type User,
 } from '@wfb/contracts';
 
@@ -36,10 +39,37 @@ export interface MockShare {
   root: MockDir;
 }
 
+export interface MockTrashEntry {
+  item: TrashItem;
+  node: MockNode;
+}
+
+export interface MockJob {
+  job: Job;
+  listeners: Set<(job: Job) => void>;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+export interface MockUpload {
+  id: string;
+  dest: FileRef;
+  name: string;
+  size: number;
+  conflict: ConflictStrategy;
+  chunks: Uint8Array[];
+  offset: number;
+}
+
 export interface MockDb {
   shares: Map<string, MockShare>;
   user: User;
   loggedIn: boolean;
+  trash: Map<string, MockTrashEntry[]>;
+  jobs: Map<string, MockJob>;
+  uploads: Map<string, MockUpload>;
+  /** Copy/move above `syncLimitBytes` become jobs advancing `bytesPerTick` every `tickMs`. */
+  jobSettings: { syncLimitBytes: number; bytesPerTick: number; tickMs: number };
+  uploadChunkSize: number;
 }
 
 export class MockError extends Error {
@@ -202,6 +232,11 @@ export function createMockDb(): MockDb {
       provider: 'ldap',
     },
     loggedIn: true,
+    trash: new Map(),
+    jobs: new Map(),
+    uploads: new Map(),
+    jobSettings: { syncLimitBytes: 10 * 1024 * 1024, bytesPerTick: 2 * 1024 * 1024, tickMs: 200 },
+    uploadChunkSize: 8 * 1024 * 1024,
   };
 }
 
@@ -209,6 +244,7 @@ export let db: MockDb = createMockDb();
 
 /** Restores the seeded state (call between tests). */
 export function resetMockDb(): MockDb {
+  for (const j of db.jobs.values()) if (j.timer) clearTimeout(j.timer);
   db = createMockDb();
   return db;
 }
@@ -422,6 +458,23 @@ export function remove(items: FileRef[], permanent: boolean) {
       const parent = findNode(share.root, dirname(source.path)) as MockDir;
       parent.children.delete(node.name);
       touch(parent);
+      if (!permanent) {
+        const list = db.trash.get(source.share) ?? [];
+        list.unshift({
+          node,
+          item: {
+            id: `t${++seq}`,
+            share: source.share,
+            originalPath: source.path,
+            name: node.name,
+            type: node.type,
+            size: treeSize(node),
+            deletedAt: new Date().toISOString(),
+            deletedBy: db.user.username,
+          },
+        });
+        db.trash.set(source.share, list);
+      }
       return { source, status: permanent ? ('deleted' as const) : ('trashed' as const), error: null };
     } catch (e) {
       return { source, status: 'failed' as const, error: e instanceof Error ? e.message : 'Error' };
@@ -466,4 +519,270 @@ export function readFile(ref: FileRef): MockFile {
   const node = resolve(ref, 'read');
   if (node.type !== 'file') throw new MockError(400, 'BAD_REQUEST', 'No es un archivo');
   return node;
+}
+
+// ---------------------------------------------------------------------------
+// Trash, search, jobs and resumable uploads.
+
+let seq = 0;
+
+function treeSize(node: MockNode): number {
+  if (node.type === 'file') return node.content.byteLength;
+  let n = 0;
+  for (const c of node.children.values()) n += treeSize(c);
+  return n;
+}
+
+export function trashList(share: string): TrashItem[] {
+  getShare(share, 'read');
+  getShare(share, 'delete');
+  return (db.trash.get(share) ?? []).map((e) => e.item);
+}
+
+function trashEntries(share: string, ids: string[]): MockTrashEntry[] {
+  const list = db.trash.get(share) ?? [];
+  return ids.map((id) => {
+    const e = list.find((x) => x.item.id === id);
+    if (!e) throw new MockError(404, 'NOT_FOUND', 'No se encuentra el elemento en la papelera');
+    return e;
+  });
+}
+
+export function trashRestore(share: string, ids: string[]): void {
+  const s = getShare(share, 'write');
+  for (const e of trashEntries(share, ids)) {
+    let parent: MockDir = s.root;
+    for (const seg of pathSegments(dirname(e.item.originalPath))) {
+      let next = parent.children.get(seg);
+      if (!next) {
+        next = dir(seg, new Date().toISOString());
+        parent.children.set(seg, next);
+      }
+      if (next.type !== 'directory') throw new MockError(409, 'CONFLICT', `"${seg}" no es una carpeta`);
+      parent = next;
+    }
+    e.node.name = uniqueName(parent, e.item.name);
+    parent.children.set(e.node.name, e.node);
+    touch(parent);
+    db.trash.set(
+      share,
+      (db.trash.get(share) ?? []).filter((x) => x !== e),
+    );
+  }
+}
+
+export function trashPurge(share: string, ids: string[]): void {
+  getShare(share, 'delete');
+  const drop = new Set(ids);
+  db.trash.set(
+    share,
+    (db.trash.get(share) ?? []).filter((x) => !drop.has(x.item.id)),
+  );
+}
+
+const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+export function search(ref: FileRef, q: string, limit: number): { results: FileEntry[]; truncated: boolean } {
+  const start = resolveDir(ref, 'read');
+  const needle = fold(q);
+  const results: FileEntry[] = [];
+  let level: { node: MockDir; path: string }[] = [{ node: start, path: ref.path }];
+  while (level.length) {
+    const next: typeof level = [];
+    for (const { node, path } of level) {
+      for (const child of node.children.values()) {
+        const childPath = joinPath(path, child.name);
+        if (fold(child.name).includes(needle)) {
+          if (results.length >= limit) return { results, truncated: true };
+          results.push(toEntry(child, childPath));
+        }
+        if (child.type === 'directory') next.push({ node: child, path: childPath });
+      }
+    }
+    level = next;
+  }
+  return { results, truncated: false };
+}
+
+export function transferSize(items: FileRef[]): number {
+  let n = 0;
+  for (const item of items) {
+    const node = findNode(getShare(item.share).root, item.path);
+    if (node) n += treeSize(node);
+  }
+  return n;
+}
+
+/** Same upfront 409 as the server when every item conflicts with "fail". */
+function assertNotAllConflicting(kind: 'copy' | 'move', items: FileRef[], destination: FileRef, conflict: ConflictStrategy) {
+  if (conflict !== 'fail') return;
+  const dest = resolveDir(destination, 'write');
+  const conflicts = items.filter((item) => {
+    const node = findNode(getShare(item.share).root, item.path);
+    const sameParent = item.share === destination.share && dirname(item.path) === destination.path;
+    return !!node && !(kind === 'move' && sameParent) && dest.children.has(node.name);
+  });
+  if (conflicts.length > 0 && conflicts.length === items.length) {
+    throw new MockError(409, 'CONFLICT', 'El destino ya contiene elementos con el mismo nombre', { conflicts });
+  }
+}
+
+const isDone = (job: Job) => job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled';
+
+function emit(j: MockJob) {
+  j.job = { ...j.job, updatedAt: new Date().toISOString() };
+  for (const l of j.listeners) l(j.job);
+  if (isDone(j.job)) j.listeners.clear();
+}
+
+/** Starts a simulated background copy/move that applies the change when the progress reaches 100 %. */
+export function startJob(
+  kind: 'copy' | 'move',
+  items: FileRef[],
+  destination: FileRef,
+  conflict: ConflictStrategy,
+): Job {
+  resolveDir(destination, 'write');
+  for (const item of items) getShare(item.share, kind === 'move' ? 'delete' : 'read');
+  assertNotAllConflicting(kind, items, destination, conflict);
+  const sizes = items.map((i) => transferSize([i]));
+  const total = sizes.reduce((a, b) => a + b, 0);
+  const now = new Date().toISOString();
+  const j: MockJob = {
+    job: {
+      id: `job-${++seq}`,
+      kind,
+      status: 'running',
+      totalBytes: total,
+      doneBytes: 0,
+      totalItems: items.length,
+      doneItems: 0,
+      currentItem: items[0]?.path ?? null,
+      results: [],
+      error: null,
+      createdAt: now,
+      updatedAt: now,
+    },
+    listeners: new Set(),
+    timer: null,
+  };
+  db.jobs.set(j.job.id, j);
+  const tick = () => {
+    j.timer = null;
+    if (isDone(j.job)) return;
+    const doneBytes = Math.min(total, j.job.doneBytes + db.jobSettings.bytesPerTick);
+    let acc = 0;
+    let doneItems = 0;
+    for (const size of sizes) {
+      if (acc + size > doneBytes) break;
+      acc += size;
+      doneItems++;
+    }
+    if (doneBytes >= total) {
+      let results: TransferItemResult[];
+      try {
+        results = transfer(kind, items, destination, conflict);
+      } catch (e) {
+        results = items.map((source) => ({
+          source,
+          status: 'failed',
+          target: null,
+          error: e instanceof Error ? e.message : 'Error',
+        }));
+      }
+      j.job = { ...j.job, status: 'completed', doneBytes: total, doneItems: items.length, currentItem: null, results };
+    } else {
+      j.job = { ...j.job, doneBytes, doneItems, currentItem: items[doneItems]?.path ?? null };
+      j.timer = setTimeout(tick, db.jobSettings.tickMs);
+    }
+    emit(j);
+  };
+  j.timer = setTimeout(tick, db.jobSettings.tickMs);
+  return j.job;
+}
+
+function mockJob(id: string): MockJob {
+  const j = db.jobs.get(id);
+  if (!j) throw new MockError(404, 'NOT_FOUND', 'No se encuentra la operación');
+  return j;
+}
+
+export const getJob = (id: string): Job => mockJob(id).job;
+export const listJobs = (): Job[] => [...db.jobs.values()].map((j) => j.job);
+
+export function cancelJob(id: string): Job {
+  const j = mockJob(id);
+  if (!isDone(j.job)) {
+    if (j.timer) clearTimeout(j.timer);
+    j.timer = null;
+    j.job = { ...j.job, status: 'cancelled', currentItem: null };
+    emit(j);
+  }
+  return j.job;
+}
+
+/** Calls `fn` on every update until the job finishes; returns an unsubscribe function. */
+export function subscribeJob(id: string, fn: (job: Job) => void): () => void {
+  const j = mockJob(id);
+  if (isDone(j.job)) return () => {};
+  j.listeners.add(fn);
+  return () => j.listeners.delete(fn);
+}
+
+const session = (u: MockUpload): UploadSession => ({
+  id: u.id,
+  size: u.size,
+  offset: u.offset,
+  chunkSize: db.uploadChunkSize,
+});
+
+export function createUpload(ref: FileRef, name: string, size: number, conflict: ConflictStrategy): UploadSession {
+  const parent = resolveDir(ref, 'write');
+  if (conflict === 'fail' && parent.children.has(name)) {
+    throw new MockError(409, 'CONFLICT', `Ya existe "${name}" en el destino`, { conflicts: [{ name }] });
+  }
+  const u: MockUpload = { id: `up-${++seq}`, dest: ref, name, size, conflict, chunks: [], offset: 0 };
+  db.uploads.set(u.id, u);
+  return session(u);
+}
+
+function mockUpload(id: string): MockUpload {
+  const u = db.uploads.get(id);
+  if (!u) throw new MockError(404, 'NOT_FOUND', 'No se encuentra la subida');
+  return u;
+}
+
+export const uploadStatus = (id: string) => session(mockUpload(id));
+
+export function appendUpload(id: string, offset: number, data: Uint8Array): UploadSession {
+  const u = mockUpload(id);
+  if (offset !== u.offset) throw new MockError(409, 'CONFLICT', 'Desplazamiento incorrecto', { offset: u.offset });
+  if (u.offset + data.byteLength > u.size) {
+    throw new MockError(400, 'BAD_REQUEST', 'El fragmento supera el tamaño declarado', { offset: u.offset });
+  }
+  u.chunks.push(data);
+  u.offset += data.byteLength;
+  return session(u);
+}
+
+export function completeUpload(id: string): FileEntry {
+  const u = mockUpload(id);
+  if (u.offset !== u.size) {
+    throw new MockError(409, 'CONFLICT', 'La subida no está completa', { offset: u.offset, size: u.size });
+  }
+  const content = new Uint8Array(u.size);
+  let at = 0;
+  for (const c of u.chunks) {
+    content.set(c, at);
+    at += c.byteLength;
+  }
+  const [entry] = upload(u.dest, [{ name: u.name, content, type: '' }], u.conflict);
+  db.uploads.delete(id);
+  if (!entry) return stat({ share: u.dest.share, path: joinPath(u.dest.path, u.name) });
+  return entry;
+}
+
+export function abortUpload(id: string): void {
+  mockUpload(id);
+  db.uploads.delete(id);
 }

@@ -19,6 +19,9 @@ interface AddressBarProps {
   forwardLabel?: string;
   search: string;
   onSearch: (q: string) => void;
+  /** Enter in the search box: recursive search below the current folder. */
+  onSearchSubmit?: (q: string) => void;
+  searchDisabled?: boolean;
   onBack: () => void;
   onForward: () => void;
   onUp: () => void;
@@ -57,12 +60,14 @@ export function AddressBar(p: AddressBarProps) {
     if (editing) inputRef.current?.select();
   }, [editing]);
 
-  const crumbs = [{ label: shareName, path: '/' }];
+  const inTrash = location.view === 'trash';
+  const crumbs: { label: string; path: string; view?: 'trash' }[] = [{ label: shareName, path: '/' }];
   let acc = '/';
   for (const s of segs) {
     acc = joinPath(acc, s);
     crumbs.push({ label: s, path: acc });
   }
+  if (inTrash) crumbs.push({ label: 'Papelera', path: '/', view: 'trash' });
 
   const submit = (value: string) => {
     const loc = parseAddress(value, p.shares);
@@ -143,7 +148,7 @@ export function AddressBar(p: AddressBarProps) {
         title={
           parentLabel ? `Subir a «${parentLabel}» (Alt+Flecha arriba)` : 'Subir un nivel (Alt+Flecha arriba)'
         }
-        disabled={segs.length === 0}
+        disabled={segs.length === 0 && !inTrash}
         onClick={p.onUp}
       >
         <Icon.Up />
@@ -187,18 +192,19 @@ export function AddressBar(p: AddressBarProps) {
             </span>
             <ol>
               {crumbs.map((c, i) => (
-                <li key={c.path}>
+                <li key={`${c.path}${c.view ?? ''}`}>
                   <button
                     type="button"
                     className="wfb-crumb"
                     aria-current={i === crumbs.length - 1 ? 'location' : undefined}
                     onClick={(e) => {
                       e.stopPropagation();
-                      p.onNavigate({ share: location.share, path: c.path });
+                      p.onNavigate({ share: location.share, path: c.path, ...(c.view ? { view: c.view } : {}) });
                     }}
                   >
                     {c.label}
                   </button>
+                  {!c.view && (
                   <button
                     type="button"
                     className="wfb-crumb-sep"
@@ -211,6 +217,7 @@ export function AddressBar(p: AddressBarProps) {
                   >
                     <Icon.ChevronRight size={12} />
                   </button>
+                  )}
                 </li>
               ))}
             </ol>
@@ -221,13 +228,15 @@ export function AddressBar(p: AddressBarProps) {
       <label className="wfb-search">
         <input
           type="search"
-          placeholder={`Buscar en ${folderName}`}
-          aria-label={`Buscar en ${folderName}`}
+          placeholder={`Buscar en ${inTrash ? 'Papelera' : folderName}`}
+          aria-label={`Buscar en ${inTrash ? 'Papelera' : folderName}`}
           value={p.search}
+          disabled={p.searchDisabled}
           onChange={(e) => p.onSearch(e.target.value)}
           onKeyDown={(e) => {
             e.stopPropagation();
             if (e.key === 'Escape') p.onSearch('');
+            if (e.key === 'Enter') p.onSearchSubmit?.(e.currentTarget.value);
           }}
         />
         <Icon.Search />

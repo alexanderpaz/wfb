@@ -1,0 +1,209 @@
+/* Trash, search results and the background operations panel. */
+
+.wfb-ops-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  user-select: none;
+}
+
+.wfb-ops-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 10px 16px 6px;
+}
+
+.wfb-ops-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.wfb-ops-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.wfb-ops-notice {
+  margin: 0 16px 6px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: #fff4ce;
+  color: #5c4400;
+}
+
+.wfb-ops-table {
+  --wfb-ops-cols: minmax(220px, 2fr) minmax(180px, 2fr) 170px 100px;
+  flex: 1;
+  overflow: auto;
+  padding-bottom: 24px;
+}
+
+.wfb-ops-row {
+  display: grid;
+  grid-template-columns: var(--wfb-ops-cols);
+  align-items: center;
+  min-width: max-content;
+  height: var(--wfb-row);
+  padding: 0 11px;
+}
+
+.wfb-ops-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 34px;
+  padding: 0 20px;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.wfb-ops-head > span {
+  padding: 0 10px;
+}
+
+.wfb-ops-head > .is-right {
+  text-align: right;
+}
+
+.wfb-ops-items {
+  padding: 0 8px;
+  outline: none;
+}
+
+.wfb-ops-items:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+/* ---- Background operations panel ------------------------------------------- */
+
+.wfb-transfers {
+  position: absolute;
+  left: 16px;
+  bottom: 40px;
+  z-index: 900;
+  width: min(400px, calc(100% - 32px));
+  max-height: 60%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  animation: wfb-pop 0.15s ease-out;
+}
+
+.wfb-transfers-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 4px 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wfb-transfers-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wfb-transfers-toggle:hover {
+  background: var(--hover);
+}
+
+.wfb-transfers-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+}
+
+.wfb-transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+}
+
+.wfb-transfer + .wfb-transfer {
+  border-top: 1px solid var(--border);
+}
+
+.wfb-transfer-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.wfb-transfer-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.wfb-transfer-cancel {
+  min-width: 0;
+  height: 28px;
+}
+
+.wfb-transfer-status {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wfb-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: #e6e6e6;
+  overflow: hidden;
+}
+
+.wfb-progress-bar {
+  height: 100%;
+  background: #06b025;
+  transition: width 0.25s ease-out;
+}
+
+.wfb-transfer.is-cancelled .wfb-progress-bar,
+.wfb-transfer.is-failed .wfb-progress-bar {
+  background: var(--danger);
+}
+
+.wfb-transfer-item {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wfb-transfer-error {
+  color: var(--danger);
+}
+
+.wfb-transfer-failures summary {
+  color: var(--danger);
+  cursor: pointer;
+}
+
+.wfb-transfer-failures ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  max-height: 120px;
+  overflow: auto;
+}

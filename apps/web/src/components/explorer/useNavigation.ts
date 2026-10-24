@@ -4,23 +4,36 @@ import { useCallback, useEffect, useState } from 'react';
 export interface Location {
   share: string;
   path: string;
+  /** Special views of a share instead of a folder listing. */
+  view?: 'trash';
 }
 
-export const sameLocation = (a: Location, b: Location) => a.share === b.share && a.path === b.path;
+export const sameLocation = (a: Location, b: Location) =>
+  a.share === b.share && a.path === b.path && a.view === b.view;
 
 function readUrl(): Location {
   const params = new URLSearchParams(window.location.search);
-  return {
+  const loc: Location = {
     share: params.get('share') ?? '',
     path: normalizeVirtualPath(params.get('path') ?? '/') ?? '/',
   };
+  if (params.get('view') === 'trash') loc.view = 'trash';
+  return loc;
 }
 
 function writeUrl(loc: Location) {
   const url = new URL(window.location.href);
-  if (url.searchParams.get('share') === loc.share && url.searchParams.get('path') === loc.path) return;
+  if (
+    url.searchParams.get('share') === loc.share &&
+    url.searchParams.get('path') === loc.path &&
+    url.searchParams.get('view') === (loc.view ?? null)
+  ) {
+    return;
+  }
   url.searchParams.set('share', loc.share);
   url.searchParams.set('path', loc.path);
+  if (loc.view) url.searchParams.set('view', loc.view);
+  else url.searchParams.delete('view');
   window.history.replaceState(window.history.state, '', url);
 }
 

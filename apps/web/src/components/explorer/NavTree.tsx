@@ -8,6 +8,8 @@ import { listKey } from './useFileOps';
 import type { Location } from './useNavigation';
 
 export const nodeKey = (share: string, path: string) => `${share}:${path}`;
+export const TRASH_ROOT_KEY = '#trash';
+export const trashKey = (share: string) => `#trash:${share}`;
 
 export interface NavTreeProps {
   shares: Share[];
@@ -17,6 +19,8 @@ export interface NavTreeProps {
   onToggle: (key: string, open?: boolean) => void;
   onNavigate: (loc: Location) => void;
   dropProps: (loc: Location, name: string) => DropProps;
+  /** Shares whose recycle bin the user may open (read + delete). */
+  trashShares?: Share[];
 }
 
 const collator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' });
@@ -71,12 +75,21 @@ export function NavTree(props: NavTreeProps) {
       case 'Enter':
       case ' ':
         handled();
-        props.onNavigate({ share: el.dataset.share!, path: el.dataset.path! });
+        if (!el.dataset.share) props.onToggle(key);
+        else
+          props.onNavigate({
+            share: el.dataset.share,
+            path: el.dataset.path!,
+            ...(el.dataset.view === 'trash' ? { view: 'trash' as const } : {}),
+          });
         break;
     }
   };
 
-  const currentKey = nodeKey(props.current.share, props.current.path);
+  const currentKey =
+    props.current.view === 'trash'
+      ? trashKey(props.current.share)
+      : nodeKey(props.current.share, props.current.path);
 
   // Roving tabindex: keep one treeitem tabbable even if the current folder is collapsed away.
   useEffect(() => {
@@ -103,6 +116,9 @@ export function NavTree(props: NavTreeProps) {
             currentKey={currentKey}
           />
         ))}
+        {props.trashShares && props.trashShares.length > 0 && (
+          <TrashNode {...props} trashShares={props.trashShares} currentKey={currentKey} />
+        )}
       </div>
     </nav>
   );
@@ -173,6 +189,69 @@ function TreeNode(
           {folders.map((f) => (
             <TreeNode key={f.path} {...props} path={f.path} name={f.name} level={level + 1} />
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrashNode({
+  trashShares,
+  expanded,
+  currentKey,
+  onToggle,
+  onNavigate,
+}: NavTreeProps & { trashShares: Share[]; currentKey: string }) {
+  const isOpen = expanded.has(TRASH_ROOT_KEY);
+  return (
+    <div
+      role="treeitem"
+      aria-level={1}
+      aria-selected={false}
+      aria-expanded={isOpen}
+      aria-label="Papelera de reciclaje"
+      data-key={TRASH_ROOT_KEY}
+      tabIndex={-1}
+      className="wfb-treeitem wfb-tree-trash"
+    >
+      <div className="wfb-tree-row" style={{ paddingLeft: 4 }} onClick={() => onToggle(TRASH_ROOT_KEY)}>
+        <span className="wfb-tree-twisty" aria-hidden="true">
+          {isOpen ? <Icon.ChevronDown size={12} /> : <Icon.ChevronRight size={12} />}
+        </span>
+        <Icon.RecycleBin size={18} />
+        <span className="wfb-tree-label">Papelera de reciclaje</span>
+      </div>
+      {isOpen && (
+        <div role="group">
+          {trashShares.map((share) => {
+            const key = trashKey(share.id);
+            const isCurrent = key === currentKey;
+            return (
+              <div
+                key={share.id}
+                role="treeitem"
+                aria-level={2}
+                aria-selected={isCurrent}
+                aria-label={`Papelera de ${share.name}`}
+                data-key={key}
+                data-share={share.id}
+                data-path="/"
+                data-view="trash"
+                tabIndex={isCurrent ? 0 : -1}
+                className="wfb-treeitem"
+              >
+                <div
+                  className={`wfb-tree-row${isCurrent ? ' is-current' : ''}`}
+                  style={{ paddingLeft: 20 }}
+                  onClick={() => onNavigate({ share: share.id, path: '/', view: 'trash' })}
+                >
+                  <span className="wfb-tree-twisty is-leaf" aria-hidden="true" />
+                  <Icon.RecycleBin size={18} />
+                  <span className="wfb-tree-label">{share.name}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
