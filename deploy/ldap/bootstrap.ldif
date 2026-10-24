@@ -1,0 +1,53 @@
+# Test directory for development and E2E. Passwords are for local use only.
+dn: ou=people,dc=example,dc=org
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=example,dc=org
+objectClass: organizationalUnit
+ou: groups
+
+dn: uid=alice,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: alice
+cn: Alice Admin
+sn: Admin
+givenName: Alice
+mail: alice@example.org
+userPassword: alice123
+
+dn: uid=bob,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: bob
+cn: Bob Builder
+sn: Builder
+givenName: Bob
+mail: bob@example.org
+userPassword: bob123
+
+dn: uid=carol,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: carol
+cn: Carol Contable
+sn: Contable
+givenName: Carol
+mail: carol@example.org
+userPassword: carol123
+
+dn: cn=staff,ou=groups,dc=example,dc=org
+objectClass: groupOfUniqueNames
+cn: staff
+uniqueMember: uid=alice,ou=people,dc=example,dc=org
+uniqueMember: uid=bob,ou=people,dc=example,dc=org
+uniqueMember: uid=carol,ou=people,dc=example,dc=org
+
+dn: cn=engineering,ou=groups,dc=example,dc=org
+objectClass: groupOfUniqueNames
+cn: engineering
+uniqueMember: uid=alice,ou=people,dc=example,dc=org
+uniqueMember: uid=bob,ou=people,dc=example,dc=org
+
+dn: cn=finance,ou=groups,dc=example,dc=org
+objectClass: groupOfUniqueNames
+cn: finance
+uniqueMember: uid=carol,ou=people,dc=example,dc=org

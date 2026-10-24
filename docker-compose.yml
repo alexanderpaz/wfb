@@ -1,0 +1,97 @@
+# Production stack, consumed by Coolify ("Docker Compose" build pack).
+# Coolify injects SERVICE_* magic variables and routes the domain to app:3000
+# through its proxy, so no host ports are published here.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_LIBREOFFICE: ${INSTALL_LIBREOFFICE:-false}
+    user: '${PUID:-1000}:${PGID:-1000}'
+    restart: unless-stopped
+    expose:
+      - '3000'
+    environment:
+      - SERVICE_FQDN_APP_3000
+      - APP_URL=${SERVICE_URL_APP}
+      - NODE_ENV=production
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - SESSION_SECRET=${SERVICE_BASE64_64_SESSION}
+      - SESSION_TTL_HOURS=${SESSION_TTL_HOURS:-12}
+      - DATABASE_URL=postgresql://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/${POSTGRES_DB:-wfb}?schema=public
+      - REDIS_URL=redis://default:${SERVICE_PASSWORD_REDIS}@redis:6379/0
+      # Directory login (LDAP or Active Directory). Set DIRECTORY_KIND=none to disable.
+      - DIRECTORY_KIND=${DIRECTORY_KIND:-none}
+      - DIRECTORY_LABEL=${DIRECTORY_LABEL:-}
+      - LDAP_URL=${LDAP_URL:-}
+      - LDAP_BIND_DN=${LDAP_BIND_DN:-}
+      - LDAP_BIND_PASSWORD=${LDAP_BIND_PASSWORD:-}
+      - LDAP_BASE_DN=${LDAP_BASE_DN:-}
+      - LDAP_USER_FILTER=${LDAP_USER_FILTER:-}
+      - LDAP_GROUP_ATTRIBUTE=${LDAP_GROUP_ATTRIBUTE:-memberOf}
+      - LDAP_START_TLS=${LDAP_START_TLS:-false}
+      - LDAP_TLS_REJECT_UNAUTHORIZED=${LDAP_TLS_REJECT_UNAUTHORIZED:-true}
+      - AD_DOMAIN=${AD_DOMAIN:-}
+      # OIDC (Authentik). Leave OIDC_ISSUER empty to disable.
+      - OIDC_ISSUER=${OIDC_ISSUER:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - OIDC_SCOPES=${OIDC_SCOPES:-openid profile email groups}
+      - OIDC_GROUPS_CLAIM=${OIDC_GROUPS_CLAIM:-groups}
+      - OIDC_LABEL=${OIDC_LABEL:-Authentik}
+      # Storage
+      - SHARES_CONFIG=/config/shares.yaml
+      - HOME_ROOT=${HOME_ROOT:-}
+      - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-1024}
+      - SYNC_TRANSFER_LIMIT_MB=${SYNC_TRANSFER_LIMIT_MB:-50}
+      - OFFICE_PREVIEW=${INSTALL_LIBREOFFICE:-false}
+    volumes:
+      - app-data:/app/data
+      - ${SHARES_HOST_PATH:-/srv/fileshares}:/data/shares
+      - ${SHARES_CONFIG_HOST_PATH:-./config/shares.example.yaml}:/config/shares.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:3000/healthz']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${SERVICE_USER_POSTGRES}
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - POSTGRES_DB=${POSTGRES_DB:-wfb}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--requirepass', '${SERVICE_PASSWORD_REDIS}', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$${REDIS_PASSWORD}" --no-auth-warning ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    environment:
+      - REDIS_PASSWORD=${SERVICE_PASSWORD_REDIS}
+
+volumes:
+  app-data:
+  postgres-data:
+  redis-data:
