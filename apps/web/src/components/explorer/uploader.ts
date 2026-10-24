@@ -114,8 +114,11 @@ export async function chunkedUpload(opts: ChunkedUploadOptions): Promise<FileEnt
           opts.onProgress?.(offset, size);
           continue;
         }
-        const chunk = opts.file.slice(offset, Math.min(size, offset + chunkSize));
-        offset = (await client.uploadChunk(id, offset, chunk, signal)).offset;
+        const end = Math.min(size, offset + chunkSize);
+        const chunk = opts.file.slice(offset, end);
+        const next = (await client.uploadChunk(id, offset, chunk, signal)).offset;
+        if (next !== end) throw new Error('El servidor no ha recibido el fragmento completo.');
+        offset = next;
         failures = 0;
         opts.onProgress?.(offset, size);
       } catch (e) {
