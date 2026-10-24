@@ -79,6 +79,8 @@ export interface OidcCallbackResult {
   user: User;
   subject: string;
   returnTo: string;
+  /** Kept in the session for RP-initiated logout (`id_token_hint`). */
+  idToken: string | undefined;
 }
 
 /** Authorization code + PKCE flow against the configured issuer (Authentik). */
@@ -89,6 +91,8 @@ export class OidcService {
     private readonly cfg: OidcConfig,
     private readonly kv: KeyValueStore,
     private readonly allowInsecure: boolean,
+    /** Where the IdP sends the browser after an RP-initiated logout (APP_URL). */
+    private readonly postLogoutRedirectUri: string,
   ) {}
 
   /** Lazy discovery; a failed discovery is retried on the next call. */
@@ -162,6 +166,7 @@ export class OidcService {
     currentUrl.search = params.toString();
 
     let claims: Record<string, unknown>;
+    let idToken: string | undefined;
     try {
       const tokens = await client.authorizationCodeGrant(config, currentUrl, {
         pkceCodeVerifier: pending.codeVerifier,
@@ -171,6 +176,7 @@ export class OidcService {
       });
       const idClaims = tokens.claims();
       if (!idClaims) throw new Error('missing id_token');
+      idToken = tokens.id_token;
       claims = { ...idClaims };
       try {
         const info = await client.fetchUserInfo(config, tokens.access_token, idClaims.sub);
@@ -186,6 +192,27 @@ export class OidcService {
       user: userFromClaims(claims, this.cfg.groupsClaim),
       subject: String(claims.sub),
       returnTo: pending.returnTo,
+      idToken,
     };
+  }
+
+  /**
+   * IdP logout URL (RP-initiated logout) or null when the IdP does not
+   * advertise an `end_session_endpoint` or is unreachable.
+   */
+  async endSessionUrl(idToken: string | undefined): Promise<string | null> {
+    let config: client.Configuration;
+    try {
+      config = await this.getConfiguration();
+    } catch {
+      return null;
+    }
+    if (!config.serverMetadata().end_session_endpoint) return null;
+    const params: Record<string, string> = {
+      post_logout_redirect_uri: this.postLogoutRedirectUri,
+      client_id: this.cfg.clientId,
+    };
+    if (idToken) params.id_token_hint = idToken;
+    return client.buildEndSessionUrl(config, params).toString();
   }
 }

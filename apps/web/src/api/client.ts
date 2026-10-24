@@ -12,6 +12,7 @@ import {
   type JobResponse,
   type JobsResponse,
   type ListResponse,
+  type LogoutResponse,
   type MeResponse,
   type MkdirRequest,
   type OkResponse,
@@ -99,7 +100,7 @@ export const api = {
   providers: () => request<AuthProvidersResponse>('GET', '/auth/providers'),
   login: (body: DirectoryLoginRequest) => request<MeResponse>('POST', '/auth/ldap/login', { body }),
   oidcLoginUrl: (returnTo?: string) => apiUrl('/auth/oidc/login', { returnTo }),
-  logout: () => request<OkResponse>('POST', '/auth/logout'),
+  logout: () => request<LogoutResponse>('POST', '/auth/logout'),
   me: () => request<MeResponse>('GET', '/auth/me'),
 
   shares: () => request<SharesResponse>('GET', '/shares'),

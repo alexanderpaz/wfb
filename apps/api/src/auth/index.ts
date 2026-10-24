@@ -4,8 +4,8 @@ import {
   DirectoryLoginRequest,
   SESSION_COOKIE,
   type AuthProvidersResponse,
+  type LogoutResponse,
   type MeResponse,
-  type OkResponse,
   type User,
 } from '@wfb/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -46,7 +46,7 @@ export default fp<ModuleOptions>(
   async (app, { config, services }) => {
     const { kv, prisma } = services;
     const sessions = new SessionStore(kv, config.session.ttlSeconds);
-    const oidc = config.oidc ? new OidcService(config.oidc, kv, !config.isProd) : null;
+    const oidc = config.oidc ? new OidcService(config.oidc, kv, !config.isProd, config.appUrl) : null;
 
     const cookieOptions = {
       signed: true,
@@ -82,9 +82,14 @@ export default fp<ModuleOptions>(
     });
 
     /** Starts a fresh session (new id and CSRF token) to prevent session fixation. */
-    async function startSession(request: FastifyRequest, reply: FastifyReply, user: User) {
+    async function startSession(
+      request: FastifyRequest,
+      reply: FastifyReply,
+      user: User,
+      extra: { idToken?: string } = {},
+    ) {
       if (request.authSession) await sessions.destroy(request.authSession.id);
-      const session = await sessions.create(user);
+      const session = await sessions.create(user, extra);
       request.authSession = session;
       request.user = user;
       reply.setCookie(SESSION_COOKIE, session.id, { ...cookieOptions, maxAge: config.session.ttlSeconds });
@@ -146,8 +151,8 @@ export default fp<ModuleOptions>(
       const browserState = unsignedState?.valid ? unsignedState.value : null;
       reply.clearCookie(OIDC_STATE_COOKIE, oidcStateCookieOptions);
       try {
-        const { user, subject, returnTo } = await oidc.handleCallback(query, browserState);
-        await startSession(request, reply, user);
+        const { user, subject, returnTo, idToken } = await oidc.handleCallback(query, browserState);
+        await startSession(request, reply, user, { idToken });
         await persistUser(prisma, user, subject, request.log);
         void app.audit.record({
           action: 'login',
@@ -175,14 +180,22 @@ export default fp<ModuleOptions>(
       }
     });
 
-    app.post(`${API_PREFIX}/auth/logout`, async (request, reply): Promise<OkResponse> => {
+    app.post(`${API_PREFIX}/auth/logout`, async (request, reply): Promise<LogoutResponse> => {
       const user = requireUser(request);
+      const session = request.authSession;
       request.audit = { action: 'logout', user };
-      if (request.authSession) await sessions.destroy(request.authSession.id);
+      if (session) await sessions.destroy(session.id);
       request.authSession = null;
       request.user = null;
-      reply.clearCookie(SESSION_COOKIE, { path: '/' });
-      return { ok: true };
+      reply.clearCookie(SESSION_COOKIE, {
+        path: '/',
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: config.session.secureCookie,
+      });
+      const redirectUrl =
+        oidc && user.provider === 'oidc' ? await oidc.endSessionUrl(session?.idToken) : null;
+      return redirectUrl ? { ok: true, redirectUrl } : { ok: true };
     });
 
     app.get(`${API_PREFIX}/auth/me`, async (request): Promise<MeResponse> => {
