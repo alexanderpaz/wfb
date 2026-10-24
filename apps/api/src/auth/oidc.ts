@@ -29,6 +29,46 @@ export class OidcError extends Error {
 }
 
 /**
+ * Operator-facing explanation of a failed code exchange, for the `oidc callback failed` log line.
+ * The browser only gets the generic `oidc_failed` code.
+ */
+export function oidcFailureHint(err: unknown): string | undefined {
+  const parts: string[] = [];
+  for (let e: unknown = err, depth = 0; e && depth < 5; depth++) {
+    if (typeof e !== 'object') break;
+    const { message, error, code, cause } = e as {
+      message?: unknown;
+      error?: unknown;
+      code?: unknown;
+      cause?: unknown;
+    };
+    for (const v of [message, error, code]) if (typeof v === 'string') parts.push(v);
+    if (cause && typeof cause === 'object' && 'alg' in cause) parts.push(`alg=${String(cause.alg)}`);
+    e = cause;
+  }
+  const text = parts.join(' | ');
+  if (/alg=HS\d+|unsupported JWS|JWT "alg"/.test(text)) {
+    return 'The IdP signs ID tokens with a symmetric key (HS256), which is not supported. In Authentik select a certificate in Providers → <provider> → Signing Key.';
+  }
+  if (/invalid_client/.test(text)) {
+    return 'The IdP rejected the client credentials: check OIDC_CLIENT_ID, OIDC_CLIENT_SECRET and OIDC_TOKEN_AUTH_METHOD (client_secret_post for Authentik).';
+  }
+  if (/invalid_grant/.test(text)) {
+    return 'The IdP rejected the authorization code: redirect_uri not registered exactly, code reused/expired, or clock skew.';
+  }
+  if (/"iss"|issuer/i.test(text)) {
+    return 'The ID token issuer does not match OIDC_ISSUER (it must match the provider issuer exactly, including the trailing slash).';
+  }
+  if (/"(exp|iat|nbf)"|timestamp/.test(text)) {
+    return 'ID token time checks failed: synchronize the clocks (NTP) of the wfb and IdP servers.';
+  }
+  if (/fetch failed|ECONN|ENOTFOUND|ETIMEDOUT|certificate|CERT_|self.signed/i.test(text)) {
+    return 'The app cannot reach the IdP token endpoint (DNS, network or TLS). For a private CA set NODE_EXTRA_CA_CERTS.';
+  }
+  return undefined;
+}
+
+/**
  * Only same-origin relative paths are accepted as post-login destinations
  * (open-redirect protection). Anything else falls back to '/'.
  */

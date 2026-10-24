@@ -33,6 +33,8 @@ export class MockIdp {
   /** Advertise `end_session_endpoint` (RP-initiated logout) in discovery. */
   endSession = true;
   idTokens: string[] = [];
+  /** Sign ID tokens with HS256 and the client secret, like an Authentik provider without a Signing Key. */
+  symmetricIdTokens = false;
 
   private server: Server | null = null;
   private grants = new Map<string, Grant>();
@@ -142,14 +144,16 @@ export class MockIdp {
     const challenge = createHash('sha256').update(verifier).digest('base64url');
     if (challenge !== grant.codeChallenge) return invalid('invalid_grant');
 
-    const idToken = await new SignJWT({ nonce: grant.nonce, ...grant.claims })
-      .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
+    const jwt = new SignJWT({ nonce: grant.nonce, ...grant.claims })
+      .setProtectedHeader(this.symmetricIdTokens ? { alg: 'HS256' } : { alg: 'RS256', kid: 'k1' })
       .setIssuer(this.issuer)
       .setAudience(grant.clientId)
       .setSubject(String(grant.claims.sub))
       .setIssuedAt()
-      .setExpirationTime('5m')
-      .sign(this.privateKey);
+      .setExpirationTime('5m');
+    const idToken = await jwt.sign(
+      this.symmetricIdTokens ? new TextEncoder().encode(this.clientSecret ?? '') : this.privateKey,
+    );
     this.idTokens.push(idToken);
     const accessToken = randomBytes(16).toString('hex');
     this.tokens.set(accessToken, grant.claims);
