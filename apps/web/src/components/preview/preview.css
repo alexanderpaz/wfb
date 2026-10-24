@@ -141,7 +141,7 @@
   inset: 0;
   display: flex;
   flex-direction: column;
-  background: rgba(20, 20, 20, 0.94);
+  background: rgba(20, 20, 20, 0.97);
   color: #fff;
   font-family: var(--font);
 }
@@ -217,9 +217,10 @@
 }
 
 .wfb-pv-stage {
-  display: grid;
+  display: flex;
   flex: 1;
-  place-items: center;
+  align-items: center;
+  justify-content: center;
   min-height: 0;
   padding: 16px;
   overflow: hidden;
