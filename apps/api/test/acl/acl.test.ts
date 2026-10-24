@@ -3,7 +3,12 @@ import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { parseSharesConfig, SharesConfigError, type ShareDef } from '../../src/acl/config.js';
+import {
+  loadSharesConfig,
+  parseSharesConfig,
+  SharesConfigError,
+  type ShareDef,
+} from '../../src/acl/config.js';
 import { effectivePermissions, groupKey } from '../../src/acl/match.js';
 import { homeDirName, ShareService } from '../../src/acl/share-service.js';
 import { HttpError } from '../../src/lib/errors.js';
@@ -189,5 +194,24 @@ describe('ShareService', () => {
     expect(() => new ShareService({ file, reloadIntervalMs: 0 })).toThrow(/Invalid shares config/);
     service = new ShareService({ file: path.join(tmp, 'missing.yaml'), reloadIntervalMs: 0 });
     expect(ids(users.alice)).toEqual([]);
+  });
+});
+
+describe('loadSharesConfig', () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'wfb-shares-'));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('explains a directory left by a Docker bind mount of a missing file', () => {
+    expect(() => loadSharesConfig(dir)).toThrow(SharesConfigError);
+    expect(() => loadSharesConfig(dir)).toThrow(/is a directory.*SHARES_CONFIG_HOST_PATH/);
+  });
+
+  it('reports a missing file', () => {
+    expect(() => loadSharesConfig(path.join(dir, 'shares.yaml'))).toThrow(/file not found/);
   });
 });

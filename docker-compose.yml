@@ -50,7 +50,10 @@ services:
     volumes:
       - app-data:/app/data
       - ${SHARES_HOST_PATH:-/srv/fileshares}:/data/shares
-      - ${SHARES_CONFIG_HOST_PATH:-./config/shares.example.yaml}:/config/shares.yaml:ro
+      # Absolute path to an existing file on the host. Coolify resolves relative paths against
+      # its own application folder (not the repository), and Docker turns a missing file into
+      # an empty directory.
+      - ${SHARES_CONFIG_HOST_PATH:?set SHARES_CONFIG_HOST_PATH to the absolute path of shares.yaml on the host}:/config/shares.yaml:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -42,6 +42,7 @@ jobs:
       - name: Validate Coolify compose
         run: docker compose -f docker-compose.yml config --quiet
         env:
+          SHARES_CONFIG_HOST_PATH: ./config/shares.example.yaml
           SERVICE_USER_POSTGRES: ci
           SERVICE_PASSWORD_POSTGRES: ci
           SERVICE_PASSWORD_REDIS: ci
