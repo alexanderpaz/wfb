@@ -2,7 +2,8 @@
 #
 # Coolify generates the SERVICE_* variables and routes the domain set for the
 # `app` service to port 3000 through its proxy, so no host ports are published.
-# `${VAR:?}` marks variables that must be set in Coolify before deploying.
+# SHARES_HOST_PATH and SHARES_CONFIG_HOST_DIR must be set in Coolify before deploying. Volume
+# sources only use plain `${VAR}`: Coolify rejects `${VAR:?message}` as unsafe.
 #
 # Local test with simulated Coolify variables (see deploy/COOLIFY.md):
 #   SERVICE_URL_APP=http://localhost:3000 SERVICE_USER_POSTGRES=wfb SERVICE_PASSWORD_POSTGRES=pw \
@@ -72,11 +73,11 @@ services:
       # Thumbnail cache, safe to delete at any time.
       - app-thumbs:/app/data/thumbs
       # Host folder holding the shares; paths in shares.yaml live under /data/shares.
-      - ${SHARES_HOST_PATH:?set SHARES_HOST_PATH to the host folder with the shares}:/data/shares
+      - ${SHARES_HOST_PATH}:/data/shares
       # Folder with shares.yaml (hot reloaded). Must be an absolute host path: Coolify resolves
       # relative paths against its application folder, not the repository, and Docker would
       # mount an empty directory in their place.
-      - ${SHARES_CONFIG_HOST_DIR:?set SHARES_CONFIG_HOST_DIR to the absolute host folder with shares.yaml}:/config:ro
+      - ${SHARES_CONFIG_HOST_DIR}:/config:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -111,9 +112,9 @@ services:
       - TZ=${TZ:-UTC}
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      # pg_dump target and scripts for the scheduled backup task (deploy/COOLIFY.md).
+      # pg_dump target for the scheduled backup task (deploy/COOLIFY.md). Repo files cannot be
+      # bind mounted: Coolify maps ./ to its application folder, which has no checkout.
       - postgres-backups:/backups
-      - ./deploy/scripts:/scripts:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 10s

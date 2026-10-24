@@ -1,6 +1,7 @@
 #!/bin/sh
-# Runs inside the postgres container (Coolify scheduled task, see deploy/COOLIFY.md):
-#   sh /scripts/pg-backup.sh
+# Runs inside the postgres container, e.g. from a host cron (Coolify uses the one-line
+# command in deploy/COOLIFY.md because it cannot mount repo files):
+#   docker exec -i postgres-<uuid> sh -s < deploy/scripts/pg-backup.sh
 # Writes a custom-format dump to /backups and keeps the last BACKUP_KEEP_DAYS days.
 set -eu
 

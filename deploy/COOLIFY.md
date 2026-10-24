@@ -112,7 +112,7 @@ Se generan una vez y se mantienen entre despliegues. Si cambias `SERVICE_BASE64_
 | `REDIS_MAXMEMORY`             | no          | `256mb`                      | Memoria máxima de Redis.                                                                                                                                                                                                                                                                                                                                                                        |
 | `SHUTDOWN_TIMEOUT_SECONDS`    | no          | `25`                         | Espera a peticiones en curso al parar (menor que el `stop_grace_period` de 30 s).                                                                                                                                                                                                                                                                                                               |
 
-Las variables marcadas en el compose como `${VAR:?}` (hoy `SHARES_HOST_PATH` y `SHARES_CONFIG_HOST_DIR`) son obligatorias: si faltan, el despliegue falla con un mensaje claro.
+`SHARES_HOST_PATH` y `SHARES_CONFIG_HOST_DIR` son obligatorias: si faltan, el despliegue falla (Docker Compose rechaza un volumen con origen vacío) o la app no arranca. El compose usa `${VAR}` sin `:?` ni valores por defecto porque Coolify solo acepta `${VAR}`, `${VAR}/ruta` o `${VAR:-ruta}` como origen de un volumen.
 
 Bloquea (icono de candado) las contraseñas (`LDAP_BIND_PASSWORD`, `OIDC_CLIENT_SECRET`) para que Coolify no las muestre. No uses comillas alrededor de los valores; marca **Is Literal** en `LDAP_USER_FILTER` si contiene `$`.
 
@@ -160,16 +160,19 @@ Para que la versión aparezca en las etiquetas de la imagen, activa **Advanced �
 
 ### Opción A: tarea programada con `pg_dump` (incluida)
 
-El servicio `postgres` monta `deploy/scripts` en `/scripts` y el volumen `postgres-backups` en `/backups`.
+El servicio `postgres` monta el volumen `postgres-backups` en `/backups`. El comando va completo en la tarea porque Coolify no puede montar archivos del repositorio: traduce `./` a `/data/coolify/applications/<uuid>/`, donde no hay checkout. Los scripts de `deploy/scripts/` hacen lo mismo y sirven para un cron del host (`docker exec -i postgres-<uuid> sh -s < deploy/scripts/pg-backup.sh`).
 
 1. En la aplicación: **Scheduled Tasks → + Add**.
    - Name: `pg-backup`
-   - Command: `sh /scripts/pg-backup.sh`
+   - Command (una sola línea):
+     ```sh
+     mkdir -p /backups && f=/backups/$POSTGRES_DB-$(date -u +%Y%m%dT%H%M%SZ).dump && pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --no-owner -f "$f.partial" && mv "$f.partial" "$f" && find /backups -name "*.dump" -mtime +14 -delete && echo "backup written: $f"
+     ```
    - Frequency: `0 3 * * *` (todos los días a las 03:00)
    - Container name: `postgres`
 2. Ejecútala una vez a mano y revisa su log: `backup written: /backups/wfb-AAAAMMDDTHHMMSSZ.dump`.
 
-Se guardan 14 días (`BACKUP_KEEP_DAYS`, variable del contenedor `postgres` si quieres cambiarlo). Los volcados están en el host en `/var/lib/docker/volumes/<uuid>_postgres-backups/_data`; **cópialos fuera del servidor** (restic/rclone a S3, otro NAS…), por ejemplo con un cron del host:
+Se guardan 14 días (cambia `-mtime +14` para otra retención). Los volcados están en el host en `/var/lib/docker/volumes/<uuid>_postgres-backups/_data`; **cópialos fuera del servidor** (restic/rclone a S3, otro NAS…), por ejemplo con un cron del host:
 
 ```bash
 rclone sync /var/lib/docker/volumes/<uuid>_postgres-backups/_data s3:mi-bucket/wfb-db
@@ -192,7 +195,7 @@ Las copias programadas de Coolify (pestaña **Backups**, con destino S3) están 
 2. Restaura (borra y recrea los objetos de la base de datos dentro de una transacción):
    ```bash
    docker exec postgres-<uuid> ls /backups
-   docker exec postgres-<uuid> sh /scripts/pg-restore.sh /backups/wfb-20260101T030000Z.dump
+   docker exec postgres-<uuid> sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner --single-transaction /backups/wfb-20260101T030000Z.dump'
    ```
    Para restaurar un volcado traído de fuera: `docker cp wfb.dump postgres-<uuid>:/backups/`.
 3. **Restart** de la aplicación en Coolify.
@@ -211,7 +214,8 @@ Haz una prueba de restauración de vez en cuando (por ejemplo en un entorno `sta
 
 | Síntoma                                                                                                      | Causa probable y solución                                                                                                                                                                                                                                          |
 | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| El despliegue falla con `required variable SHARES_HOST_PATH is missing`                                      | Define `SHARES_HOST_PATH` en Environment Variables.                                                                                                                                                                                                                |
+| El despliegue falla con `invalid spec: :/data/shares: empty section between colons` (o `:/config`)           | Falta `SHARES_HOST_PATH` (o `SHARES_CONFIG_HOST_DIR`) en Environment Variables.                                                                                                                                                                                    |
+| Coolify detiene el despliegue con `Invalid volume source: contains forbidden character '${'`                 | El origen de un volumen usa una forma de variable que Coolify no acepta (`${VAR:?…}`, `${VAR:+…}`, etc.). Usa solo `${VAR}`, `${VAR}/ruta` o `${VAR:-ruta}`.                                                                                                       |
 | La app se reinicia con `EISDIR: illegal operation on a directory` o `Invalid shares config … file not found` | `SHARES_CONFIG_HOST_DIR`/`SHARES_CONFIG_FILE` no apuntan a un archivo existente en el host (con una ruta relativa o inexistente Docker crea una carpeta vacía). Crea `shares.yaml` en una ruta absoluta, por ejemplo `/srv/wfb/config/shares.yaml`, y redespliega. |
 | `app` reinicia en bucle con `ERROR: /app/data is not writable`                                               | El volumen `app-data` se creó con otro dueño (por ejemplo una versión antigua de la imagen). Desde el servidor: `docker run --rm -v <uuid>_app-data:/d alpine chmod -R 1777 /d`.                                                                                   |
 | `database migrations failed after 5 attempts`                                                                | Revisa las líneas anteriores del log. `P1000` (autenticación): se cambió `SERVICE_PASSWORD_POSTGRES` después de crear el volumen; restáurala. `P1001`: `postgres` no está sano.                                                                                    |

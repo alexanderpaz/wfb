@@ -1,6 +1,6 @@
 #!/bin/sh
 # Restores a dump produced by pg-backup.sh. Stop the app service first.
-#   sh /scripts/pg-restore.sh /backups/wfb-20260101T030000Z.dump
+#   docker exec -i postgres-<uuid> sh -s /backups/wfb-20260101T030000Z.dump < deploy/scripts/pg-restore.sh
 set -eu
 
 file="${1:?usage: pg-restore.sh /backups/<file>.dump}"
