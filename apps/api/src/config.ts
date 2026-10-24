@@ -61,6 +61,23 @@ const EnvSchema = z.object({
   OFFICE_PREVIEW: bool(false),
   SOFFICE_PATH: z.string().default('soffice'),
   LOGIN_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(10),
+  /**
+   * Proxy addresses/CIDRs whose X-Forwarded-For is believed for the client IP (login rate
+   * limit, audit). `true` trusts any sender, which lets clients spoof their IP. Hop counts are
+   * not accepted: Fastify treats them as "trust nothing".
+   */
+  TRUST_PROXY: z
+    .string()
+    .optional()
+    .transform((v): boolean | string => {
+      const value = v?.trim() ?? '';
+      if (value === '' || value === 'false') return false;
+      if (value === 'true') return true;
+      return value;
+    })
+    .refine((v) => typeof v !== 'string' || !/^\d+$/.test(v), {
+      message: 'TRUST_PROXY takes proxy addresses or CIDRs, not a hop count',
+    }),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -111,6 +128,8 @@ export interface Config {
   };
   preview: { office: boolean; sofficePath: string };
   loginRateLimitPerMinute: number;
+  /** Fastify `trustProxy`: boolean or comma-separated addresses/CIDRs. */
+  trustProxy: boolean | string;
 }
 
 function normalizeUrl(value: string): string {
@@ -193,5 +212,6 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     },
     preview: { office: env.OFFICE_PREVIEW, sofficePath: env.SOFFICE_PATH },
     loginRateLimitPerMinute: env.LOGIN_RATE_LIMIT_PER_MINUTE,
+    trustProxy: env.TRUST_PROXY,
   };
 }

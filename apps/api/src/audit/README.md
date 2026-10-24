@@ -15,4 +15,4 @@ Registered before every other module; decorates `app.audit` and `request.audit`.
   `mkdir`, `rename`, `copy`, `move`, `delete`, `upload` (multipart and resumable completion),
   `trash.restore`, `trash.purge`. Reads are not audited. `target` is `share:/path` for copy/move and the new
   path for rename.
-- `ip` is `request.ip`, which honours `X-Forwarded-For` (Fastify `trustProxy`).
+- `ip` is `request.ip`, which honours `X-Forwarded-For` only from proxies listed in `TRUST_PROXY`.

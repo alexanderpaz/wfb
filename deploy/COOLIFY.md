@@ -103,6 +103,7 @@ Se generan una vez y se mantienen entre despliegues. Si cambias `SERVICE_BASE64_
 | `LOG_LEVEL`                   | no          | `info`                       | `fatal`, `error`, `warn`, `info`, `debug`, `trace`.                                     |
 | `SESSION_TTL_HOURS`           | no          | `12`                         | Duración de la sesión.                                                                  |
 | `LOGIN_RATE_LIMIT_PER_MINUTE` | no          | `10`                         | Intentos de login por IP y minuto.                                                      |
+| `TRUST_PROXY` | no | `172.16.0.0/12` | Direcciones/CIDR del proxy cuyo `X-Forwarded-For` se acepta para obtener la IP real del cliente (rate limit y auditoría). Debe cubrir la red Docker de Traefik: `docker network inspect coolify -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}'`. Si tus usuarios están en esa misma red LAN, usa la subred exacta. No uses `true` (permite falsificar la IP) ni un número de saltos (se ignora). |
 | `MAX_UPLOAD_MB`               | no          | `1024`                       | Tamaño máximo de archivo subido.                                                        |
 | `SYNC_TRANSFER_LIMIT_MB`      | no          | `50`                         | Copias/movimientos mayores se hacen como tarea en segundo plano.                        |
 | `TRASH_DIR_NAME`              | no          | `.wfb-trash`                 | Carpeta de papelera dentro de cada share.                                               |

@@ -33,6 +33,8 @@ services:
       - SESSION_SECRET=${SERVICE_BASE64_64_SESSION}
       - SESSION_TTL_HOURS=${SESSION_TTL_HOURS:-12}
       - LOGIN_RATE_LIMIT_PER_MINUTE=${LOGIN_RATE_LIMIT_PER_MINUTE:-10}
+      # Coolify's Traefik reaches the app from a Docker network (default pool 172.16.0.0/12).
+      - TRUST_PROXY=${TRUST_PROXY:-172.16.0.0/12}
       - DATABASE_URL=postgresql://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/${POSTGRES_DB:-wfb}?schema=public
       - REDIS_URL=redis://default:${SERVICE_PASSWORD_REDIS}@redis:6379/0
       # Directory login (LDAP or Active Directory). DIRECTORY_KIND=none disables it.

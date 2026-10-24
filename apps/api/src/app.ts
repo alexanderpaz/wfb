@@ -34,7 +34,7 @@ export async function buildApp({
 }: BuildOptions): Promise<FastifyInstance> {
   const app = Fastify({
     ...loggingOptions(config),
-    trustProxy: true,
+    trustProxy: config.trustProxy,
     bodyLimit: 10 * 1024 * 1024,
   });
 
