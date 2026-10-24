@@ -127,11 +127,19 @@ OIDC_TOKEN_AUTH_METHOD=client_secret_post
 - `OIDC_TOKEN_AUTH_METHOD`: déjalo en `client_secret_post`. Authentik no decodifica las credenciales `client_secret_basic` codificadas como formulario, y un secreto con caracteres especiales falla con `invalid_client`. Usa `client_secret_basic` solo con otros proveedores que lo requieran.
 - El issuer debe ser HTTPS en producción y coincidir **carácter por carácter** con el `issuer` de `https://auth.example.com/application/o/wfb/.well-known/openid-configuration`.
 - Si Authentik usa una CA privada, monta el PEM y define `NODE_EXTRA_CA_CERTS` (§2).
-- El login usa _authorization code_ + PKCE + `state` + `nonce`; el `state` se guarda 10 minutos en Redis.
+- El login usa _authorization code_ + PKCE + `state` + `nonce`; el `state` se guarda 10 minutos en Redis y en una cookie firmada `wfb_oidc`, y ambos deben coincidir en el callback (protege contra _login CSRF_).
 
 ### Cierre de sesión
 
-"Cerrar sesión" en wfb elimina la sesión de wfb, **no** la de Authentik (no hay _RP-initiated logout_), por lo que **no hace falta registrar una post-logout redirect URI**. Mientras la sesión de Authentik siga activa, "Entrar con Authentik" volverá a entrar sin pedir contraseña. Para cerrar ambas, el usuario puede salir también desde el portal de Authentik (`https://auth.example.com/if/user/` → Cerrar sesión); en equipos compartidos acorta la duración de sesión en el flujo de autenticación de Authentik.
+"Cerrar sesión" en wfb siempre elimina la sesión de wfb y, para usuarios que entraron con OIDC, hace además un _RP-initiated logout_: el navegador va al `end_session_endpoint` de Authentik con `id_token_hint`, `client_id` y `post_logout_redirect_uri` = `APP_URL` (por ejemplo `https://files.example.com`). Si el IdP no publica `end_session_endpoint`, solo se cierra la sesión local.
+
+Lo que ocurre en Authentik depende del **invalidation flow** del provider:
+
+- `default-provider-invalidation-flow` (el que usan los blueprints): muestra una página de Authentik que confirma la salida de la aplicación y ofrece cerrar también la sesión de Authentik. No vuelve automáticamente a wfb.
+- Para cerrar la sesión de Authentik sin preguntar, asigna al provider un flujo de invalidación con la etapa _User Logout_ (por ejemplo `default-invalidation-flow`).
+- Para que Authentik devuelva al usuario a wfb, registra `APP_URL` como redirect URI de tipo _post-logout_ en el provider si tu versión de Authentik lo permite. Las versiones que no lo permiten (como la 2024.10 del entorno de desarrollo) se quedan en la página del flujo.
+
+Con otros IdP OIDC registra `APP_URL` como _post-logout redirect URI_ del cliente.
 
 ### Blueprint de producción
 
