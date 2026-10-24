@@ -6,7 +6,13 @@ import type { ModuleOptions } from '../lib/module.js';
 import { registerFileRoutes } from './routes.js';
 import { FilesService, type ResolvedRef } from './service.js';
 
-export type { ResolvedRef, TrashHandler } from './service.js';
+export type {
+  ResolvedRef,
+  TransferExecutor,
+  TransferJobHandler,
+  TransferPlan,
+  TrashHandler,
+} from './service.js';
 export { FilesService } from './service.js';
 
 declare module 'fastify' {

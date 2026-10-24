@@ -310,6 +310,7 @@ describe('delete', () => {
         { share: 'home', path: '/dir' },
         { share: 'home', path: '/ghost' },
       ],
+      permanent: true,
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().results.map((r: { status: string }) => r.status)).toEqual([
