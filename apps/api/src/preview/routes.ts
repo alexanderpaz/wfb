@@ -11,6 +11,7 @@ import { createReadStream } from 'node:fs';
 import type { Config } from '../config.js';
 import { sendFile } from '../files/download.js';
 import { requireUser } from '../lib/auth-context.js';
+import { fileCspFor } from '../lib/security-headers.js';
 import { parse } from '../lib/validate.js';
 import { mimeFor } from '../storage/entries.js';
 import { LocalStorageProvider } from '../storage/local.js';
@@ -22,11 +23,7 @@ import type { ThumbnailService } from './thumbnails.js';
 
 export const MAX_TEXT_BYTES = 1024 * 1024;
 
-/** No scripts, no plugins, no navigation: previews are passive content even if opened directly. */
-export const PREVIEW_CSP =
-  "default-src 'none'; img-src 'self' data: blob:; media-src 'self'; style-src 'unsafe-inline'; sandbox";
-/** Chromium refuses to render PDFs in sandboxed documents, so PDFs keep the CSP without `sandbox`. */
-export const PDF_CSP = PREVIEW_CSP.replace(/; sandbox$/, '');
+export { FILE_CSP as PREVIEW_CSP, PDF_CSP } from '../lib/security-headers.js';
 
 export interface PreviewServices {
   thumbnails: ThumbnailService;
@@ -42,8 +39,8 @@ export function registerPreviewRoutes(app: FastifyInstance, config: Config, svc:
 
   app.addHook('onSend', async (_request, reply, payload) => {
     const type = String(reply.getHeader('content-type') ?? '');
-    reply.header('Content-Security-Policy', type.startsWith('application/pdf') ? PDF_CSP : PREVIEW_CSP);
-    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('Content-Security-Policy', fileCspFor(type));
+    reply.header('X-Frame-Options', 'SAMEORIGIN');
     return payload;
   });
 

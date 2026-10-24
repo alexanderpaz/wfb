@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { HttpError } from '../lib/errors.js';
+import { fileCspFor } from '../lib/security-headers.js';
 import type { EntryInfo, StorageProvider } from '../storage/provider.js';
 
 export type ByteRange = { start: number; end: number };
@@ -72,6 +73,8 @@ export async function sendFile(
     .header('Last-Modified', info.modifiedAt.toUTCString())
     .header('Cache-Control', 'private, no-cache')
     .header('X-Content-Type-Options', 'nosniff')
+    .header('Content-Security-Policy', fileCspFor(mime))
+    .header('X-Frame-Options', 'SAMEORIGIN')
     .header('Content-Type', mime)
     .header('Content-Disposition', contentDisposition(inline ? 'inline' : 'attachment', info.name));
 

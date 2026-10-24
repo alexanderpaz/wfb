@@ -10,6 +10,7 @@ import './lib/auth-context.js';
 import { createPrisma } from './lib/db.js';
 import { registerErrorHandler } from './lib/errors.js';
 import { createStore } from './lib/kv.js';
+import { registerSecurityHeaders } from './lib/security-headers.js';
 import type { ModuleOptions, Services } from './lib/module.js';
 import previewModule from './preview/index.js';
 import { registerStatic } from './static.js';
@@ -45,6 +46,7 @@ export async function buildApp({
   });
 
   registerErrorHandler(app);
+  registerSecurityHeaders(app, { hsts: config.session.secureCookie });
   app.decorateRequest('user', null);
   await app.register(fastifyCookie, { secret: config.session.secret });
 
