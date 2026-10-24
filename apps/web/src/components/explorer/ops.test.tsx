@@ -120,7 +120,12 @@ describe('background jobs panel', () => {
           createdAt: '2026-01-01T00:00:00Z',
           updatedAt: '2026-01-01T00:00:00Z',
           results: [
-            { source: { share: 'engineering', path: '/notas.txt' }, status: 'done', target: null, error: null },
+            {
+              source: { share: 'engineering', path: '/notas.txt' },
+              status: 'done',
+              target: null,
+              error: null,
+            },
             {
               source: { share: 'engineering', path: '/config.json' },
               status: 'failed',
@@ -136,8 +141,7 @@ describe('background jobs panel', () => {
       http.post('*/api/files/move', () => HttpResponse.json({ mode: 'job', jobId: 'job-x' })),
     );
     const { user } = await openEngineering();
-    await user.click(screen.getByRole('option', { name: 'notas.txt' }));
-    await user.click(screen.getByRole('option', { name: 'config.json' }), { keyboardState: undefined });
+    await user.click(screen.getByRole('option', { name: 'config.json' }));
     await user.keyboard('{Control>}x{/Control}');
     await user.dblClick(screen.getByRole('option', { name: 'Vacía' }));
     await screen.findByText('Esta carpeta está vacía.');
@@ -158,7 +162,9 @@ describe('trash view', () => {
     await user.click(screen.getByRole('option', { name: 'config.json' }));
     await user.keyboard('{Delete}');
     await user.click(await screen.findByRole('button', { name: 'Mover a la papelera' }));
-    await waitFor(() => expect(screen.queryByRole('option', { name: 'config.json' })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole('option', { name: 'config.json' })).not.toBeInTheDocument(),
+    );
   }
 
   async function openTrash(user: Awaited<ReturnType<typeof openEngineering>>['user']) {
@@ -167,7 +173,9 @@ describe('trash view', () => {
     // Only shares with delete permission get a recycle bin.
     await user.click(root.querySelector('.wfb-tree-row')!);
     expect(within(tree).queryByRole('treeitem', { name: 'Papelera de Público' })).not.toBeInTheDocument();
-    await user.click(within(tree).getByRole('treeitem', { name: 'Papelera de Ingeniería' }).firstElementChild!);
+    await user.click(
+      within(tree).getByRole('treeitem', { name: 'Papelera de Ingeniería' }).firstElementChild!,
+    );
     return screen.findByRole('listbox', { name: 'Papelera de Ingeniería' });
   }
 
@@ -185,7 +193,13 @@ describe('trash view', () => {
     await user.click(row);
     await user.click(screen.getByRole('button', { name: 'Restaurar' }));
     expect(await screen.findByText('Se ha restaurado «notas.txt»')).toBeInTheDocument();
-    await waitFor(() => expect(within(list).getAllByRole('option').map((o) => o.ariaLabel)).toEqual(['config.json']));
+    await waitFor(() =>
+      expect(
+        within(list)
+          .getAllByRole('option')
+          .map((o) => o.ariaLabel),
+      ).toEqual(['config.json']),
+    );
 
     await user.click(screen.getByRole('button', { name: 'Atrás' }));
     expect(await option('notas.txt')).toBeInTheDocument();
