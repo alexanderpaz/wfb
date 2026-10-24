@@ -534,8 +534,8 @@ function treeSize(node: MockNode): number {
 }
 
 export function trashList(share: string): TrashItem[] {
-  getShare(share, 'read');
-  getShare(share, 'delete');
+  const s = getShare(share, 'read');
+  if (!s.share.permissions.includes('write')) getShare(share, 'delete');
   return (db.trash.get(share) ?? []).map((e) => e.item);
 }
 

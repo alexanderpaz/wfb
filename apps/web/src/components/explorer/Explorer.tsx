@@ -156,7 +156,12 @@ export function Explorer({
   const canWrite = can(location.share, 'write') && !inTrash;
   const canDelete = can(location.share, 'delete') && !inTrash;
   const trashShares = useMemo(
-    () => shares.filter((s) => s.permissions.includes('read') && s.permissions.includes('delete')),
+    () =>
+      shares.filter(
+        (s) =>
+          s.permissions.includes('read') &&
+          (s.permissions.includes('write') || s.permissions.includes('delete')),
+      ),
     [shares],
   );
 
