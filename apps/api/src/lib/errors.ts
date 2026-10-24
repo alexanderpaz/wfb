@@ -50,13 +50,30 @@ export function fromErrno(err: NodeJS.ErrnoException): HttpError | null {
     case 'EPERM':
       return forbidden('Permission denied by the file system');
     case 'ENOTDIR':
+      return badRequest('Not a folder');
     case 'EISDIR':
+      return badRequest('Is a folder');
     case 'EINVAL':
+      return badRequest('Invalid operation');
     case 'ENAMETOOLONG':
-      return badRequest(err.message);
+      return badRequest('Name too long');
     default:
       return null;
   }
+}
+
+/**
+ * Message safe to return to clients: Node file system errors embed absolute
+ * server paths ("ENOSPC: no space left on device, write '/srv/...'"), so
+ * they are reduced to their errno code.
+ */
+export function publicErrorMessage(err: unknown): string {
+  if (err instanceof HttpError) return err.message;
+  const e = err as Partial<NodeJS.ErrnoException> | null;
+  if (e && typeof e.code === 'string' && (e.syscall !== undefined || e.path !== undefined)) {
+    return fromErrno(e as NodeJS.ErrnoException)?.message ?? e.code;
+  }
+  return (e as Error | null)?.message || 'failed';
 }
 
 export function registerErrorHandler(app: FastifyInstance): void {

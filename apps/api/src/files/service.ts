@@ -21,7 +21,7 @@ import { Writable, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { z } from 'zod';
 import type { ResolvedShare, ShareService } from '../acl/share-service.js';
-import { badRequest, conflict, HttpError } from '../lib/errors.js';
+import { badRequest, conflict, HttpError, publicErrorMessage } from '../lib/errors.js';
 import { compareEntries, toFileEntry } from '../storage/entries.js';
 import { LocalStorageProvider } from '../storage/local.js';
 import { freeName, sanitizeFileName } from '../storage/names.js';
@@ -96,7 +96,7 @@ export function itemError(err: unknown): string {
     case 'EPERM':
       return 'forbidden';
     default:
-      return (err as Error).message ?? 'failed';
+      return publicErrorMessage(err);
   }
 }
 
