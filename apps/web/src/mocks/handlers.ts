@@ -16,6 +16,7 @@ import {
 import { http, HttpResponse, delay, type HttpHandler } from 'msw';
 import * as store from './db';
 import { MockError } from './db';
+import { previewHandlers } from './preview';
 
 /** MSW handlers implementing the contract in memory (see `./db`). */
 
@@ -195,4 +196,5 @@ export const handlers: HttpHandler[] = [
       });
     }),
   ),
+  ...previewHandlers,
 ];
