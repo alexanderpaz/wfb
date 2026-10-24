@@ -51,6 +51,7 @@ export interface FileViewProps {
   onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
   itemDragProps: (entry: FileEntry) => DragProps;
   backgroundDropProps: DropProps;
+  renderBigIcon?: (entry: FileEntry, fallback: React.ReactNode) => React.ReactNode;
 }
 
 export function FileView(p: FileViewProps) {
@@ -173,7 +174,13 @@ export function FileView(p: FileViewProps) {
                 </>
               ) : view === 'icons' ? (
                 <>
-                  <FileIcon kind={kind} size={64} className="wfb-item-bigicon" />
+                  {p.renderBigIcon && entry.previewable && kind === 'image' ? (
+                    <span className="wfb-item-bigicon wfb-item-thumb">
+                      {p.renderBigIcon(entry, <FileIcon kind={kind} size={64} />)}
+                    </span>
+                  ) : (
+                    <FileIcon kind={kind} size={64} className="wfb-item-bigicon" />
+                  )}
                   {name}
                 </>
               ) : (

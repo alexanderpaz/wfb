@@ -239,6 +239,40 @@ describe('UserMenu', () => {
     await waitFor(() => expect(session).toBeNull());
   });
 
+  it('follows the IdP end-session URL after an OIDC logout', async () => {
+    const endSession = 'https://auth.example.org/application/o/wfb/end-session/?id_token_hint=x';
+    server.use(
+      http.post('/api/auth/logout', () => {
+        session = null;
+        return HttpResponse.json({ ok: true, redirectUrl: endSession });
+      }),
+    );
+    session = { ...alice, user: { ...alice.user, provider: 'oidc' } };
+    const navigate = vi.fn();
+    const user = userEvent.setup();
+    renderApp({ navigate });
+    await user.click(await screen.findByRole('button', { name: /Alice Admin/ }));
+    await user.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(endSession));
+  });
+
+  it('ignores non-http logout redirects', async () => {
+    server.use(
+      http.post('/api/auth/logout', () => {
+        session = null;
+        return HttpResponse.json({ ok: true, redirectUrl: 'javascript:alert(1)' });
+      }),
+    );
+    session = alice;
+    const navigate = vi.fn();
+    const user = userEvent.setup();
+    renderApp({ navigate });
+    await user.click(await screen.findByRole('button', { name: /Alice Admin/ }));
+    await user.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
+    expect(await screen.findByLabelText('Usuario')).toBeInTheDocument();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it('computes initials', () => {
     expect(initials('Alice Admin')).toBe('AA');
     expect(initials('carol')).toBe('CA');
