@@ -25,7 +25,8 @@ export function parseRange(header: string | undefined, size: number): ByteRange 
   return { start, end };
 }
 
-const INLINE_SAFE = /^(image\/(png|jpe?g|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon)|audio\/.+|video\/.+|application\/pdf|text\/plain)$/;
+const INLINE_SAFE =
+  /^(image\/(png|jpe?g|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon)|audio\/.+|video\/.+|application\/pdf|text\/plain)$/;
 
 /** Types a browser may render in our origin without script execution (no HTML/SVG/XML). */
 export function isInlineSafe(mime: string): boolean {

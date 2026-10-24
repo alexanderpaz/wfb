@@ -28,7 +28,10 @@ export function extensionOf(name: string): string {
 
 export function mimeFor(name: string): string {
   const ext = extensionOf(name);
-  return MIME_OVERRIDES[ext] ?? (lookup(name) || (TEXT_EXTENSIONS.has(ext) ? 'text/plain' : 'application/octet-stream'));
+  return (
+    MIME_OVERRIDES[ext] ??
+    (lookup(name) || (TEXT_EXTENSIONS.has(ext) ? 'text/plain' : 'application/octet-stream'))
+  );
 }
 
 export function isOfficeFile(name: string): boolean {

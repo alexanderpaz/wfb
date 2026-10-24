@@ -3,9 +3,13 @@ import { Transform, type Readable } from 'node:stream';
 import { HttpError } from '../lib/errors.js';
 
 export const tooLarge = (maxBytes: number) =>
-  new HttpError('PAYLOAD_TOO_LARGE', `File exceeds the maximum upload size of ${maxBytes} bytes`, {
-    maxBytes,
-  });
+  new HttpError(
+    'PAYLOAD_TOO_LARGE',
+    `File exceeds the maximum upload size of ${Math.floor(maxBytes)} bytes`,
+    {
+      maxBytes: Math.floor(maxBytes),
+    },
+  );
 
 /**
  * Busboy just ends a truncated file stream; this wrapper turns truncation
@@ -17,9 +21,8 @@ export function guardedFileStream(part: MultipartFile, maxBytes: number): Readab
     flush: (cb) => cb(part.file.truncated ? tooLarge(maxBytes) : null),
   });
   part.file.on('error', (err) => guard.destroy(err));
-  part.file.on('limit', () => {
-    guard.destroy(tooLarge(maxBytes));
-    part.file.resume();
-  });
+  // The consumer may attach after the error (e.g. after an async exists() check);
+  // the error stays recorded on the stream and is reported by pipeline().
+  guard.on('error', () => {});
   return part.file.pipe(guard);
 }

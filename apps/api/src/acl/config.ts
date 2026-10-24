@@ -16,9 +16,7 @@ export type AclEntry = z.infer<typeof AclEntry>;
 
 const ShareDefSchema = z
   .object({
-    id: z
-      .string()
-      .regex(/^[a-z0-9][a-z0-9_-]{0,63}$/, 'id must be a lowercase slug (a-z, 0-9, "-", "_")'),
+    id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/, 'id must be a lowercase slug (a-z, 0-9, "-", "_")'),
     name: z.string().trim().min(1),
     description: z.string().optional(),
     path: z.string().min(1),
@@ -102,7 +100,8 @@ export function parseSharesConfig(
       throw new SharesConfigError(opts.file, `share id "${HOME_SHARE_ID}" is reserved when home is enabled`);
     }
     const root = opts.homeRootOverride ?? data.home.root;
-    if (!root) throw new SharesConfigError(opts.file, 'home.root (or HOME_ROOT) is required when home is enabled');
+    if (!root)
+      throw new SharesConfigError(opts.file, 'home.root (or HOME_ROOT) is required when home is enabled');
     home = { name: data.home.name, root: path.resolve(cwd, root), permissions: data.home.permissions };
   }
 

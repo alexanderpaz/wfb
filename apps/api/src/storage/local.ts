@@ -200,10 +200,12 @@ export class LocalStorageProvider implements StorageProvider {
     }
     target.provider.assertValidName(basename(normalizeVirtualPath(target.path) ?? ''));
     const dst = await target.provider.entryPath(target.path);
-    if (await lstat(dst).then(
-      () => true,
-      () => false,
-    )) {
+    if (
+      await lstat(dst).then(
+        () => true,
+        () => false,
+      )
+    ) {
       throw conflict('An entry with that name already exists');
     }
     return dst;
@@ -259,7 +261,11 @@ export class LocalStorageProvider implements StorageProvider {
     return handle.createReadStream({ start: range?.start, end: range?.end });
   }
 
-  async writeFile(virtualPath: string, data: Readable, opts: { overwrite?: boolean } = {}): Promise<EntryInfo> {
+  async writeFile(
+    virtualPath: string,
+    data: Readable,
+    opts: { overwrite?: boolean } = {},
+  ): Promise<EntryInfo> {
     const dst = await this.entryPath(virtualPath);
     this.assertValidName(path.basename(dst));
     const temp = path.join(path.dirname(dst), `${TEMP_PREFIX}${randomBytes(8).toString('hex')}.tmp`);
