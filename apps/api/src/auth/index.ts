@@ -15,7 +15,7 @@ import { HttpError, notFound, unauthenticated } from '../lib/errors.js';
 import type { ModuleOptions } from '../lib/module.js';
 import { parse } from '../lib/validate.js';
 import { authenticateDirectory, DirectoryUnavailableError } from './directory.js';
-import { OidcError, OidcService } from './oidc.js';
+import { OidcError, oidcFailureHint, OidcService } from './oidc.js';
 import { assertJsonBody, assertSameOrigin } from './origin.js';
 import { persistUser } from './persist.js';
 import { checkLoginRateLimit } from './rate-limit.js';
@@ -174,7 +174,7 @@ export default fp<ModuleOptions>(
       } catch (err) {
         const code = err instanceof OidcError ? err.code : 'oidc_failed';
         request.log.warn(
-          { err: err instanceof OidcError ? (err.cause ?? err) : err, code },
+          { err: err instanceof OidcError ? (err.cause ?? err) : err, code, hint: oidcFailureHint(err) },
           'oidc callback failed',
         );
         void app.audit.record({

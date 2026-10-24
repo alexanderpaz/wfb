@@ -1,7 +1,13 @@
 import { SESSION_COOKIE } from '@wfb/contracts';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { groupsFromClaim, safeReturnTo, userFromClaims } from '../../src/auth/oidc.js';
+import {
+  groupsFromClaim,
+  oidcFailureHint,
+  OidcService,
+  safeReturnTo,
+  userFromClaims,
+} from '../../src/auth/oidc.js';
 import { buildApp } from '../../src/app.js';
 import { MemoryStore } from '../../src/lib/kv.js';
 import { testConfig } from '../helpers.js';
@@ -78,6 +84,7 @@ beforeEach(async () => {
   idp.userinfo = {};
   idp.tokenRequests = [];
   idp.failDiscovery = 0;
+  idp.symmetricIdTokens = false;
   await createApp();
 });
 afterEach(async () => app?.close());
@@ -280,6 +287,55 @@ describe('GET /api/auth/oidc/callback', () => {
       headers: { cookie: `${SESSION_COOKIE}=${a}` },
     });
     expect(old.statusCode).toBe(401);
+  });
+});
+
+describe('oidcFailureHint', () => {
+  async function failedCallbackError(env: Record<string, string> = {}): Promise<unknown> {
+    const config = testConfig({
+      APP_URL,
+      OIDC_ISSUER: idp.issuer,
+      OIDC_CLIENT_ID: 'wfb',
+      OIDC_CLIENT_SECRET: 's3cret',
+      ...env,
+    });
+    const service = new OidcService(config.oidc!, new MemoryStore(), true, APP_URL);
+    const { url, state } = await service.authorizationUrl('/');
+    const code = idp.authorize(url, claims);
+    return service.handleCallback(new URLSearchParams({ code, state }).toString(), state).then(
+      () => expect.unreachable('callback should fail'),
+      (err: unknown) => err,
+    );
+  }
+
+  it('explains HS256 ID tokens (Authentik provider without a Signing Key)', async () => {
+    idp.symmetricIdTokens = true;
+    expect(oidcFailureHint(await failedCallbackError())).toMatch(/Signing Key/);
+    const res = await fullLogin();
+    expect(res.res.headers.location).toBe('/?authError=oidc_failed');
+  });
+
+  it('explains rejected client credentials', async () => {
+    expect(oidcFailureHint(await failedCallbackError({ OIDC_CLIENT_SECRET: 'wrong' }))).toMatch(
+      /OIDC_CLIENT_SECRET/,
+    );
+  });
+
+  it('explains an unsupported JWS algorithm advertised by the IdP', () => {
+    const err = Object.assign(new Error('unsupported JWS "alg" identifier'), { cause: { alg: 'HS256' } });
+    expect(oidcFailureHint(new Error('OIDC code exchange failed', { cause: err }))).toMatch(/Signing Key/);
+  });
+
+  it('explains encrypted ID tokens (Authentik provider with an Encryption Key)', () => {
+    const cause = Object.assign(new Error('JWE decryption is not configured'), {
+      code: 'OAUTH_UNSUPPORTED_OPERATION',
+    });
+    const err = Object.assign(new Error('unsupported operation'), { cause });
+    expect(oidcFailureHint(new Error('OIDC code exchange failed', { cause: err }))).toMatch(/Encryption Key/);
+  });
+
+  it('returns undefined for unknown errors', () => {
+    expect(oidcFailureHint(new Error('something else'))).toBeUndefined();
   });
 });
 
