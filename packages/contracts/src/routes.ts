@@ -60,9 +60,9 @@ export const routes = {
   logout: {
     method: 'POST',
     path: '/auth/logout',
-    summary: 'Logout',
+    summary: 'Logout (redirectUrl: IdP end-session URL for OIDC sessions)',
     auth: true,
-    response: common.OkResponse,
+    response: auth.LogoutResponse,
   },
   me: { method: 'GET', path: '/auth/me', summary: 'Current user', auth: true, response: auth.MeResponse },
 

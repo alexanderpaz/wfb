@@ -21,7 +21,7 @@ import { Writable, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { z } from 'zod';
 import type { ResolvedShare, ShareService } from '../acl/share-service.js';
-import { badRequest, conflict, HttpError } from '../lib/errors.js';
+import { badRequest, conflict, HttpError, publicErrorMessage } from '../lib/errors.js';
 import { compareEntries, toFileEntry } from '../storage/entries.js';
 import { LocalStorageProvider } from '../storage/local.js';
 import { freeName, sanitizeFileName } from '../storage/names.js';
@@ -58,8 +58,16 @@ export type TransferExecutor = (
 
 /** Hook used by POST /files/copy|move to run large transfers as background jobs. */
 export interface TransferJobHandler {
-  /** Returns a job id when the transfer runs in the background, null to run it synchronously. */
-  maybeStart(user: User, plan: TransferPlan): Promise<string | null>;
+  /**
+   * Returns a job id when the transfer runs in the background, null to run it
+   * synchronously. `onFinish` is called once a started job ends, with the
+   * per-item results so far and the error that stopped it (if any).
+   */
+  maybeStart(
+    user: User,
+    plan: TransferPlan,
+    onFinish?: (results: TransferItemResult[], error: unknown) => void,
+  ): Promise<string | null>;
 }
 
 export interface FilesServiceOptions {
@@ -88,7 +96,7 @@ export function itemError(err: unknown): string {
     case 'EPERM':
       return 'forbidden';
     default:
-      return (err as Error).message ?? 'failed';
+      return publicErrorMessage(err);
   }
 }
 

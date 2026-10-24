@@ -109,6 +109,12 @@ export class UploadService {
     return this.session(await this.load(user, id));
   }
 
+  /** Destination of an upload owned by `user` (404 otherwise). */
+  async destination(user: User, id: string): Promise<{ share: string; path: string }> {
+    const state = await this.load(user, id);
+    return { share: state.share, path: joinPath(state.path, state.name) };
+  }
+
   /** Appends `body` at `offset`, which must be the current offset. */
   async append(
     user: User,

@@ -1,10 +1,10 @@
-import { basename, dirname, joinPath, type TrashItem, type User } from '@wfb/contracts';
+import { basename, dirname, joinPath, type Permission, type TrashItem, type User } from '@wfb/contracts';
 import { randomBytes } from 'node:crypto';
 import { cp, lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ResolvedShare } from '../acl/share-service.js';
 import type { FilesService, ResolvedRef, TrashHandler } from '../files/index.js';
-import { badRequest, notFound } from '../lib/errors.js';
+import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { measure } from '../jobs/transfer.js';
 import { LocalStorageProvider } from '../storage/local.js';
 import { freeName } from '../storage/names.js';
@@ -150,9 +150,26 @@ export class TrashService implements TrashHandler {
     return expired.length;
   }
 
+  /**
+   * Access policy. The trash of a share is shared by everyone entitled to act
+   * on it, whoever deleted the item (`deletedBy` is informative):
+   * - list: read + (write or delete)
+   * - restore: read + write
+   * - purge: read + delete
+   * Read is always required so write-only shares (drop boxes) never reveal
+   * names of deleted entries. Invisible shares are 404, missing permissions 403.
+   */
+  private async access(user: User, shareId: string, need: 'list' | Permission): Promise<ResolvedShare> {
+    const share = await this.files.shares.assert(user, shareId, 'read');
+    const perms = share.permissions;
+    const ok = need === 'list' ? perms.includes('write') || perms.includes('delete') : perms.includes(need);
+    if (!ok)
+      throw forbidden(need === 'list' ? 'Missing permission on this trash' : `Missing "${need}" permission`);
+    return share;
+  }
+
   async list(user: User, shareId: string): Promise<TrashItem[]> {
-    await this.files.shares.assert(user, shareId, 'read');
-    const share = await this.files.shares.assert(user, shareId, 'delete');
+    const share = await this.access(user, shareId, 'list');
     await this.autoPurge(share).catch(() => 0);
     return this.items(share);
   }
@@ -161,14 +178,16 @@ export class TrashService implements TrashHandler {
     for (const id of ids) if (!ID_RE.test(id)) throw badRequest('Invalid trash id', { id });
   }
 
-  async restore(user: User, shareId: string, ids: string[]): Promise<void> {
+  /** Returns where each item went back to (after conflict renaming). */
+  async restore(user: User, shareId: string, ids: string[]): Promise<{ id: string; path: string }[]> {
     this.checkIds(ids);
-    const share = await this.files.shares.assert(user, shareId, 'write');
+    const share = await this.access(user, shareId, 'write');
     const provider = this.provider(share);
     const root = await this.trashDir(share);
     const metas = await Promise.all(ids.map((id) => this.readMeta(path.join(root, id))));
     const missing = ids.filter((_, i) => !metas[i]);
     if (missing.length) throw notFound('Trash item not found');
+    const restored: { id: string; path: string }[] = [];
 
     for (const [i, id] of ids.entries()) {
       const meta = metas[i]!;
@@ -180,13 +199,22 @@ export class TrashService implements TrashHandler {
       const target = await provider.entryPath(joinPath(parent, name));
       await moveEntry(path.join(root, id, ITEM), target);
       await rm(path.join(root, id), { recursive: true, force: true });
+      restored.push({ id, path: joinPath(parent, name) });
     }
+    return restored;
   }
 
-  async purge(user: User, shareId: string, ids: string[]): Promise<void> {
+  /** Returns the original path of each purged item (null for unknown ids). */
+  async purge(user: User, shareId: string, ids: string[]): Promise<{ id: string; path: string | null }[]> {
     this.checkIds(ids);
-    const share = await this.files.shares.assert(user, shareId, 'delete');
+    const share = await this.access(user, shareId, 'delete');
     const root = await this.trashDir(share);
-    await Promise.all(ids.map((id) => rm(path.join(root, id), { recursive: true, force: true })));
+    return Promise.all(
+      ids.map(async (id) => {
+        const meta = await this.readMeta(path.join(root, id));
+        await rm(path.join(root, id), { recursive: true, force: true });
+        return { id, path: meta?.originalPath ?? null };
+      }),
+    );
   }
 }

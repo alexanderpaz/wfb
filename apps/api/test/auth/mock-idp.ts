@@ -30,6 +30,9 @@ export class MockIdp {
   discoveryRequests = 0;
   userinfo: Record<string, unknown> = {};
   tokenRequests: { auth: string | undefined; params: URLSearchParams }[] = [];
+  /** Advertise `end_session_endpoint` (RP-initiated logout) in discovery. */
+  endSession = true;
+  idTokens: string[] = [];
 
   private server: Server | null = null;
   private grants = new Map<string, Grant>();
@@ -102,6 +105,7 @@ export class MockIdp {
           id_token_signing_alg_values_supported: ['RS256'],
           code_challenge_methods_supported: ['S256'],
           token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
+          ...(this.endSession ? { end_session_endpoint: this.url('end-session/') } : {}),
         },
       };
     }
@@ -146,6 +150,7 @@ export class MockIdp {
       .setIssuedAt()
       .setExpirationTime('5m')
       .sign(this.privateKey);
+    this.idTokens.push(idToken);
     const accessToken = randomBytes(16).toString('hex');
     this.tokens.set(accessToken, grant.claims);
     return {

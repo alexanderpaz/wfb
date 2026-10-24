@@ -7,6 +7,7 @@ import {
 } from '@wfb/contracts';
 import type { FastifyInstance } from 'fastify';
 import type { Readable } from 'node:stream';
+import type { AuditIntent } from '../audit/index.js';
 import { z } from 'zod';
 import { requireUser } from '../lib/auth-context.js';
 import { parse } from '../lib/validate.js';
@@ -53,7 +54,16 @@ export function registerUploadRoutes(app: FastifyInstance, uploads: UploadServic
     p('/uploads/:id/complete'),
     async (request): Promise<EntryResponse> => {
       const user = requireUser(request);
-      return { entry: await uploads.complete(user, request.params.id) };
+      const audit: AuditIntent = {
+        action: 'upload',
+        ...(await uploads.destination(user, request.params.id)),
+        detail: { resumable: true },
+      };
+      request.audit = audit;
+      const entry = await uploads.complete(user, request.params.id);
+      audit.path = entry.path;
+      audit.detail = { ...audit.detail, size: entry.size };
+      return { entry };
     },
   );
 

@@ -1,4 +1,4 @@
-import { basename, joinPath, type User } from '@wfb/contracts';
+import { basename, joinPath, type TransferItemResult, type User } from '@wfb/contracts';
 import { randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { lstat, mkdir, readdir, readlink, rename, rm, stat, symlink, unlink, utimes } from 'node:fs/promises';
@@ -167,7 +167,11 @@ export class TransferJobs implements TransferJobHandler {
     }
   }
 
-  async maybeStart(user: User, plan: TransferPlan): Promise<string | null> {
+  async maybeStart(
+    user: User,
+    plan: TransferPlan,
+    onFinish?: (results: TransferItemResult[], error: unknown) => void,
+  ): Promise<string | null> {
     const acc: SizeEstimate = { bytes: 0, entries: 0, exceeded: false };
     for (const src of plan.sources) {
       if (plan.kind === 'move' && (await this.isCheapMove(src, plan.dest))) continue;
@@ -183,12 +187,21 @@ export class TransferJobs implements TransferJobHandler {
     const job = this.manager.start(
       user.id,
       { kind: plan.kind, totalBytes: acc.bytes, totalItems: plan.sources.length },
-      (ctx) => this.run(plan, ctx),
+      async (ctx) => {
+        const results: TransferItemResult[] = [];
+        try {
+          await this.run(plan, ctx, results);
+        } catch (err) {
+          onFinish?.(results, err);
+          throw err;
+        }
+        onFinish?.(results, null);
+      },
     );
     return job.id;
   }
 
-  private async run(plan: TransferPlan, ctx: JobContext): Promise<void> {
+  private async run(plan: TransferPlan, ctx: JobContext, results: TransferItemResult[]): Promise<void> {
     const sizes: number[] = [];
     for (const src of plan.sources) {
       const cheap = plan.kind === 'move' && (await this.isCheapMove(src, plan.dest));
@@ -261,6 +274,7 @@ export class TransferJobs implements TransferJobHandler {
       );
       // Skipped, failed or renamed-in-place items still count as processed.
       doneBytes = before + sizes[i]!;
+      results.push(result);
       ctx.addResult(result);
       ctx.update({ doneItems: i + 1, doneBytes });
     }

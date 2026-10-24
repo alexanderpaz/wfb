@@ -43,3 +43,14 @@ export const MeResponse = z.object({
   csrfToken: z.string(),
 });
 export type MeResponse = z.infer<typeof MeResponse>;
+
+/**
+ * POST /api/auth/logout. `redirectUrl` is set for OIDC sessions when the IdP
+ * supports RP-initiated logout: the client must navigate there to end the
+ * IdP session too (it then returns to APP_URL).
+ */
+export const LogoutResponse = z.object({
+  ok: z.literal(true),
+  redirectUrl: z.string().url().optional(),
+});
+export type LogoutResponse = z.infer<typeof LogoutResponse>;

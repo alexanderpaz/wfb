@@ -1,6 +1,6 @@
 import type { Job, TransferItemResult } from '@wfb/contracts';
 import { randomUUID } from 'node:crypto';
-import { notFound } from '../lib/errors.js';
+import { notFound, publicErrorMessage } from '../lib/errors.js';
 
 export interface JobContext {
   signal: AbortSignal;
@@ -102,7 +102,7 @@ export class JobManager {
           record.job.status = 'cancelled';
         } else {
           record.job.status = 'failed';
-          record.job.error = (err as Error)?.message ?? 'failed';
+          record.job.error = publicErrorMessage(err);
         }
       })
       .finally(() => {
