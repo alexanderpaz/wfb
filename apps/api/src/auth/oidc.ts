@@ -2,6 +2,7 @@ import type { User } from '@wfb/contracts';
 import * as client from 'openid-client';
 import type { Config } from '../config.js';
 import type { KeyValueStore } from '../lib/kv.js';
+import { safeEqual } from './sessions.js';
 
 export type OidcConfig = NonNullable<Config['oidc']>;
 
@@ -113,7 +114,11 @@ export class OidcService {
     return this.configuration;
   }
 
-  async authorizationUrl(returnTo: unknown): Promise<string> {
+  /**
+   * Returns the IdP URL and the `state`, which the caller must bind to the
+   * browser (cookie) and hand back to `handleCallback`.
+   */
+  async authorizationUrl(returnTo: unknown): Promise<{ url: string; state: string }> {
     const config = await this.getConfiguration();
     const codeVerifier = client.randomPKCECodeVerifier();
     const codeChallenge = await client.calculatePKCECodeChallenge(codeVerifier);
@@ -121,7 +126,7 @@ export class OidcService {
     const nonce = client.randomNonce();
     const pending: PendingLogin = { codeVerifier, nonce, returnTo: safeReturnTo(returnTo) };
     await this.kv.set(stateKey(state), JSON.stringify(pending), STATE_TTL_SECONDS);
-    return client
+    const url = client
       .buildAuthorizationUrl(config, {
         redirect_uri: this.cfg.redirectUri,
         scope: this.cfg.scopes,
@@ -132,16 +137,24 @@ export class OidcService {
         nonce,
       })
       .toString();
+    return { url, state };
   }
 
-  /** `query` is the raw query string of the callback request (without '?'). */
-  async handleCallback(query: string): Promise<OidcCallbackResult> {
+  /**
+   * `query` is the raw query string of the callback request (without '?').
+   * `browserState` is the state bound to the browser that started the login:
+   * a callback carrying another state (login CSRF) is rejected.
+   */
+  async handleCallback(query: string, browserState: string | null): Promise<OidcCallbackResult> {
     const params = new URLSearchParams(query);
     const state = params.get('state');
     const pendingRaw = state ? await this.kv.get(stateKey(state)) : null;
     if (state) await this.kv.del(stateKey(state));
     if (params.get('error')) throw new OidcError('oidc_denied', `IdP returned ${params.get('error')}`);
     if (!state || !pendingRaw) throw new OidcError('oidc_state', 'Unknown or expired OIDC state');
+    if (!browserState || !safeEqual(state, browserState)) {
+      throw new OidcError('oidc_state', 'OIDC state was not started by this browser');
+    }
     const pending = JSON.parse(pendingRaw) as PendingLogin;
 
     const config = await this.getConfiguration();

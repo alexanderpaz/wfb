@@ -33,6 +33,7 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const DIRECTORY_LOGIN_PATH = `${API_PREFIX}/auth/ldap/login`;
 const OIDC_LOGIN_PATH = `${API_PREFIX}/auth/oidc/login`;
 const CSRF_EXEMPT = new Set([DIRECTORY_LOGIN_PATH]);
+const OIDC_STATE_COOKIE = 'wfb_oidc';
 
 const pathOf = (url: string) => url.split('?')[0]!;
 const isApiPath = (path: string) => path === API_PREFIX || path.startsWith(`${API_PREFIX}/`);
@@ -53,6 +54,8 @@ export default fp<ModuleOptions>(
       path: '/',
       secure: config.session.secureCookie,
     };
+    // Lax is required: the IdP sends the browser back with a cross-site top-level GET.
+    const oidcStateCookieOptions = { ...cookieOptions, path: `${API_PREFIX}/auth/oidc` };
 
     app.decorateRequest('authSession', null);
 
@@ -121,7 +124,9 @@ export default fp<ModuleOptions>(
       if (!oidc) throw notFound('OIDC login is not enabled');
       const { returnTo } = (request.query ?? {}) as { returnTo?: unknown };
       try {
-        return reply.redirect(await oidc.authorizationUrl(returnTo));
+        const { url, state } = await oidc.authorizationUrl(returnTo);
+        reply.setCookie(OIDC_STATE_COOKIE, state, { ...oidcStateCookieOptions, maxAge: 600 });
+        return reply.redirect(url);
       } catch (err) {
         request.log.error({ err: err instanceof OidcError ? err.cause : err }, 'oidc login failed');
         return reply.redirect('/?authError=oidc_unavailable');
@@ -131,8 +136,12 @@ export default fp<ModuleOptions>(
     app.get(`${API_PREFIX}/auth/oidc/callback`, async (request, reply) => {
       if (!oidc) throw notFound('OIDC login is not enabled');
       const query = request.url.includes('?') ? request.url.slice(request.url.indexOf('?') + 1) : '';
+      const rawState = request.cookies[OIDC_STATE_COOKIE];
+      const unsignedState = rawState ? request.unsignCookie(rawState) : null;
+      const browserState = unsignedState?.valid ? unsignedState.value : null;
+      reply.clearCookie(OIDC_STATE_COOKIE, oidcStateCookieOptions);
       try {
-        const { user, subject, returnTo } = await oidc.handleCallback(query);
+        const { user, subject, returnTo } = await oidc.handleCallback(query, browserState);
         await startSession(request, reply, user);
         await persistUser(prisma, user, subject, request.log);
         request.log.info({ username: user.username, provider: user.provider }, 'login');
