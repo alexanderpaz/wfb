@@ -38,7 +38,7 @@ process.on('unhandledRejection', (reason) => {
 
 try {
   await app.listen({ host: config.host, port: config.port });
-  app.log.info({ appUrl: config.appUrl }, 'wfb api ready');
+  app.log.info({ appUrl: config.appUrl, oidcRedirectUri: config.oidc?.redirectUri }, 'wfb api ready');
 } catch (err) {
   app.log.fatal({ err }, 'failed to start');
   await app.close().catch(() => undefined);
