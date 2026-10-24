@@ -1,10 +1,17 @@
 # Shares (root folders) exposed by the explorer.
 #
+# In Docker/Coolify, SHARES_HOST_PATH is mounted at /data/shares, so every `path`
+# lives under /data/shares (e.g. /srv/fileshares/finance -> /data/shares/finance).
+# The file is reloaded automatically when it changes; an invalid file keeps the
+# previous configuration and logs an error. Guides: deploy/COOLIFY.md, docs/identity.md
+#
 # visibility:
 #   public  -> every authenticated user sees it with `permissions`
 #   private -> only users/groups listed in `acl` see it
-# acl entries grant extra permissions to a `group` (CN or full DN, case-insensitive)
-# or to a `user` (username). Effective permissions are the union of all matches.
+# acl entries grant extra permissions to a `group` (CN or full DN, case-insensitive:
+# `Finance` == `CN=Finance,OU=Groups,DC=corp,DC=example,DC=com`) or to a `user`
+# (sAMAccountName, uid or OIDC preferred_username). Effective permissions are the
+# union of all matches.
 # Permissions: read, write (create, upload, rename, move into), delete.
 shares:
   - id: public
