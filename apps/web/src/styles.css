@@ -1,0 +1,34 @@
+:root {
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --bg: #f3f3f3;
+  --surface: #ffffff;
+  --border: #e0e0e0;
+  --text: #1b1b1b;
+  --muted: #616161;
+  --accent: #0067c0;
+  --accent-soft: #cce4f7;
+  --hover: #e5f1fb;
+  --danger: #c42b1c;
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.placeholder {
+  display: grid;
+  place-content: center;
+  height: 100%;
+  text-align: center;
+}

@@ -1,0 +1,43 @@
+# Shares (root folders) exposed by the explorer.
+#
+# visibility:
+#   public  -> every authenticated user sees it with `permissions`
+#   private -> only users/groups listed in `acl` see it
+# acl entries grant extra permissions to a `group` (CN or full DN, case-insensitive)
+# or to a `user` (username). Effective permissions are the union of all matches.
+# Permissions: read, write (create, upload, rename, move into), delete.
+shares:
+  - id: public
+    name: Público
+    description: Documentos visibles para todos
+    path: /data/shares/public
+    visibility: public
+    permissions: [read]
+    acl:
+      - group: staff
+        permissions: [read, write]
+
+  - id: engineering
+    name: Ingeniería
+    path: /data/shares/engineering
+    visibility: private
+    acl:
+      - group: engineering
+        permissions: [read, write, delete]
+
+  - id: finance
+    name: Finanzas
+    path: /data/shares/finance
+    visibility: private
+    acl:
+      - group: finance
+        permissions: [read, write, delete]
+      - user: alice
+        permissions: [read]
+
+# Personal folders: /<root>/<username>, created on first access.
+home:
+  enabled: false
+  root: /data/shares/homes
+  name: Mi carpeta
+  permissions: [read, write, delete]

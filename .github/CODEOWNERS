@@ -1,0 +1,21 @@
+# Directory ownership used to keep parallel agents from editing the same files.
+# Agents are not GitHub users, so this file documents the split; reviewers are
+# the repository owner. See CONTRIBUTING.md.
+
+* @alexanderpaz
+
+# Orchestrator: contract, root config, deployment and CI
+/packages/contracts/     @alexanderpaz
+/package.json            @alexanderpaz
+/pnpm-lock.yaml          @alexanderpaz
+/docker-compose.yml      @alexanderpaz
+/Dockerfile              @alexanderpaz
+/.github/                @alexanderpaz
+
+# Agent Auth:         /apps/api/src/auth/  /apps/web/src/features/auth/
+# Agent Storage/ACL:  /apps/api/src/storage/  /apps/api/src/acl/  /apps/api/src/files/
+# Agent UI Explorer:  /apps/web/src/components/explorer/  /apps/web/src/stores/  /apps/web/src/mocks/
+# Agent Previews:     /apps/api/src/preview/  /apps/web/src/components/preview/
+# Agent Ops:          /apps/api/src/jobs/  /apps/api/src/trash/  /apps/api/src/uploads/
+# Agent Security/QA:  /apps/api/src/audit/  /apps/api/test/security/
+# Agent DevOps:       /deploy/
