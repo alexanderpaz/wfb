@@ -27,6 +27,11 @@ export const ApiError = z.object({
 });
 export type ApiError = z.infer<typeof ApiError>;
 
+/** Boolean query-string flag: "true"/"1"/"" are true, "false"/"0" false. */
+export const QueryBoolean = z
+  .union([z.boolean(), z.enum(['true', 'false', '1', '0', ''])])
+  .transform((v) => v === true || v === 'true' || v === '1' || v === '');
+
 export const OkResponse = z.object({ ok: z.literal(true) });
 export type OkResponse = z.infer<typeof OkResponse>;
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DownloadQuery } from './files.js';
 import { basename, dirname, joinPath, normalizeVirtualPath, VirtualPath } from './paths.js';
 
 describe('normalizeVirtualPath', () => {
@@ -16,6 +17,18 @@ describe('normalizeVirtualPath', () => {
   it.each(['..', '/a/../b', '../etc/passwd', 'a\0b'])('rejects %s', (input) => {
     expect(normalizeVirtualPath(input)).toBeNull();
     expect(VirtualPath.safeParse(input).success).toBe(false);
+  });
+});
+
+describe('QueryBoolean', () => {
+  it.each([
+    ['true', true],
+    ['1', true],
+    ['', true],
+    ['false', false],
+    ['0', false],
+  ])('%s -> %s', (input, expected) => {
+    expect(DownloadQuery.parse({ share: 's', path: '/a', inline: input }).inline).toBe(expected);
   });
 });
 

@@ -27,12 +27,6 @@ import { sendFile } from './download.js';
 import type { FilesService } from './service.js';
 import { guardedFileStream } from './upload.js';
 
-/** `inline` is read from the raw query: `z.coerce.boolean()` would turn "false" into true. */
-function inlineFlag(query: unknown): boolean {
-  const raw = (query as Record<string, unknown> | null)?.inline;
-  return raw === 'true' || raw === '1' || raw === '';
-}
-
 export function registerFileRoutes(app: FastifyInstance, files: FilesService, config: Config): void {
   const p = (route: string) => `${API_PREFIX}${route}`;
 
@@ -108,7 +102,7 @@ export function registerFileRoutes(app: FastifyInstance, files: FilesService, co
       virtualPath: ref.virtualPath,
       info,
       mime: mimeFor(info.name),
-      inline: inlineFlag(request.query),
+      inline: query.inline ?? false,
     });
   });
 }
