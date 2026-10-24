@@ -45,6 +45,8 @@ const EnvSchema = z.object({
   OIDC_SCOPES: z.string().default('openid profile email groups'),
   OIDC_GROUPS_CLAIM: z.string().default('groups'),
   OIDC_LABEL: z.string().default('Authentik'),
+  /** Authentik does not URL-decode client_secret_basic credentials, so post is the safe default. */
+  OIDC_TOKEN_AUTH_METHOD: z.enum(['client_secret_post', 'client_secret_basic']).default('client_secret_post'),
 
   SHARES_CONFIG: z.string().default('./config/shares.yaml'),
   HOME_ROOT: optionalString,
@@ -87,6 +89,7 @@ export interface Config {
     issuer: string;
     clientId: string;
     clientSecret: string | undefined;
+    tokenAuthMethod: 'client_secret_post' | 'client_secret_basic';
     scopes: string;
     groupsClaim: string;
     label: string;
@@ -147,6 +150,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
           issuer: env.OIDC_ISSUER,
           clientId: env.OIDC_CLIENT_ID,
           clientSecret: env.OIDC_CLIENT_SECRET,
+          tokenAuthMethod: env.OIDC_TOKEN_AUTH_METHOD,
           scopes: env.OIDC_SCOPES,
           groupsClaim: env.OIDC_GROUPS_CLAIM,
           label: env.OIDC_LABEL,

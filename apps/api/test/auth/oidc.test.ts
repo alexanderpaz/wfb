@@ -155,8 +155,18 @@ describe('GET /api/auth/oidc/callback', () => {
     });
 
     const tokenRequest = idp.tokenRequests[0]!;
-    expect(tokenRequest.auth).toMatch(/^Basic /);
+    expect(tokenRequest.auth).toBeUndefined();
+    expect(tokenRequest.params.get('client_secret')).toBe(idp.clientSecret);
     expect(tokenRequest.params.get('code_verifier')).toBeTruthy();
+  });
+
+  it('uses client_secret_basic when configured', async () => {
+    await app.close();
+    await createApp({ OIDC_TOKEN_AUTH_METHOD: 'client_secret_basic' });
+    const { res } = await fullLogin('/');
+    expect(res.statusCode).toBe(302);
+    expect(idp.tokenRequests[0]!.auth).toMatch(/^Basic /);
+    expect(idp.tokenRequests[0]!.params.get('client_secret')).toBeNull();
   });
 
   it('works as a public client without secret', async () => {

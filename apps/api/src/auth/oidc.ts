@@ -93,7 +93,12 @@ export class OidcService {
   /** Lazy discovery; a failed discovery is retried on the next call. */
   private getConfiguration(): Promise<client.Configuration> {
     if (!this.configuration) {
-      const auth = this.cfg.clientSecret ? client.ClientSecretBasic(this.cfg.clientSecret) : client.None();
+      const secret = this.cfg.clientSecret;
+      const auth = !secret
+        ? client.None()
+        : this.cfg.tokenAuthMethod === 'client_secret_basic'
+          ? client.ClientSecretBasic(secret)
+          : client.ClientSecretPost(secret);
       const insecure = this.allowInsecure && this.cfg.issuer.startsWith('http://');
       this.configuration = client
         .discovery(new URL(this.cfg.issuer), this.cfg.clientId, undefined, auth, {

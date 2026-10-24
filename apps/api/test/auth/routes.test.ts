@@ -242,7 +242,7 @@ describe('session routes and CSRF', () => {
     const wrong = await app.inject({
       method: 'POST',
       url: '/api/test/echo',
-      headers: withSession(cookie, `${csrf.slice(0, -1)}A`),
+      headers: withSession(cookie, `${csrf.slice(0, -1)}${csrf.endsWith('A') ? 'B' : 'A'}`),
     });
     expect(wrong.statusCode).toBe(403);
 

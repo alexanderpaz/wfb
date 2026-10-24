@@ -101,7 +101,7 @@ export class MockIdp {
           subject_types_supported: ['public'],
           id_token_signing_alg_values_supported: ['RS256'],
           code_challenge_methods_supported: ['S256'],
-          token_endpoint_auth_methods_supported: ['client_secret_basic', 'none'],
+          token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
         },
       };
     }
@@ -127,7 +127,9 @@ export class MockIdp {
 
     if (this.clientSecret) {
       const expected = `Basic ${Buffer.from(`${grant.clientId}:${this.clientSecret}`).toString('base64')}`;
-      if (auth !== expected) return { status: 401, body: { error: 'invalid_client' } };
+      const viaPost =
+        params.get('client_id') === grant.clientId && params.get('client_secret') === this.clientSecret;
+      if (auth !== expected && !viaPost) return { status: 401, body: { error: 'invalid_client' } };
     } else if (params.get('client_id') !== grant.clientId) {
       return { status: 401, body: { error: 'invalid_client' } };
     }
