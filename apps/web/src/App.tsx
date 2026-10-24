@@ -1,9 +1,6 @@
-/** Root component. Phase 1 agents replace this with the login gate and the explorer. */
+import { Explorer } from './components/explorer';
+
+/** Root component. The orchestrator wraps the explorer with the auth gate. */
 export function App() {
-  return (
-    <main className="placeholder">
-      <h1>Explorador de archivos</h1>
-      <p>Base del proyecto lista.</p>
-    </main>
-  );
+  return <Explorer />;
 }
