@@ -60,7 +60,7 @@ services:
       - OIDC_LABEL=${OIDC_LABEL:-Authentik}
       - OIDC_TOKEN_AUTH_METHOD=${OIDC_TOKEN_AUTH_METHOD:-client_secret_post}
       # Storage
-      - SHARES_CONFIG=/config/${SHARES_CONFIG_FILE:-shares.example.yaml}
+      - SHARES_CONFIG=/config/${SHARES_CONFIG_FILE:-shares.yaml}
       - HOME_ROOT=${HOME_ROOT:-}
       - TRASH_DIR_NAME=${TRASH_DIR_NAME:-.wfb-trash}
       - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-1024}
@@ -73,8 +73,10 @@ services:
       - app-thumbs:/app/data/thumbs
       # Host folder holding the shares; paths in shares.yaml live under /data/shares.
       - ${SHARES_HOST_PATH:?set SHARES_HOST_PATH to the host folder with the shares}:/data/shares
-      # Folder with shares.yaml (hot reloaded). Relative paths resolve inside the repo checkout.
-      - ${SHARES_CONFIG_HOST_DIR:-./config}:/config:ro
+      # Folder with shares.yaml (hot reloaded). Must be an absolute host path: Coolify resolves
+      # relative paths against its application folder, not the repository, and Docker would
+      # mount an empty directory in their place.
+      - ${SHARES_CONFIG_HOST_DIR:?set SHARES_CONFIG_HOST_DIR to the absolute host folder with shares.yaml}:/config:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -64,6 +64,8 @@ jobs:
       SERVICE_BASE64_64_SESSION: ci-session-secret-0123456789abcdef0123456789abcdef
       SERVICE_URL_APP: https://wfb.example.org
       SHARES_HOST_PATH: ${{ github.workspace }}/.ci-shares
+      SHARES_CONFIG_HOST_DIR: ${{ github.workspace }}/config
+      SHARES_CONFIG_FILE: shares.example.yaml
       PUID: '1001'
       PGID: '1001'
 
