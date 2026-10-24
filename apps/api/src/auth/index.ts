@@ -16,6 +16,7 @@ import type { ModuleOptions } from '../lib/module.js';
 import { parse } from '../lib/validate.js';
 import { authenticateDirectory, DirectoryUnavailableError } from './directory.js';
 import { OidcError, OidcService } from './oidc.js';
+import { assertJsonBody, assertSameOrigin } from './origin.js';
 import { persistUser } from './persist.js';
 import { checkLoginRateLimit } from './rate-limit.js';
 import { safeEqual, SessionStore, type Session } from './sessions.js';
@@ -69,7 +70,9 @@ export default fp<ModuleOptions>(
       }
 
       const path = pathOf(request.url);
-      if (!request.authSession || SAFE_METHODS.has(request.method) || !isApiPath(path)) return;
+      if (SAFE_METHODS.has(request.method) || !isApiPath(path)) return;
+      assertSameOrigin(request, config.appUrl);
+      if (!request.authSession) return;
       if (CSRF_EXEMPT.has(path)) return;
       const header = request.headers[CSRF_HEADER];
       const token = Array.isArray(header) ? header[0] : header;
@@ -96,6 +99,7 @@ export default fp<ModuleOptions>(
     app.post(DIRECTORY_LOGIN_PATH, async (request, reply): Promise<MeResponse> => {
       const directory = config.directory;
       if (!directory) throw notFound('Directory login is not enabled');
+      assertJsonBody(request);
       const { username, password } = parse(DirectoryLoginRequest, request.body);
       await checkLoginRateLimit(kv, config.loginRateLimitPerMinute, request.ip, username);
 
