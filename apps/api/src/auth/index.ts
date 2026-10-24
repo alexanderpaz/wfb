@@ -4,8 +4,8 @@ import {
   DirectoryLoginRequest,
   SESSION_COOKIE,
   type AuthProvidersResponse,
+  type LogoutResponse,
   type MeResponse,
-  type OkResponse,
   type User,
 } from '@wfb/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -16,6 +16,7 @@ import type { ModuleOptions } from '../lib/module.js';
 import { parse } from '../lib/validate.js';
 import { authenticateDirectory, DirectoryUnavailableError } from './directory.js';
 import { OidcError, OidcService } from './oidc.js';
+import { assertJsonBody, assertSameOrigin } from './origin.js';
 import { persistUser } from './persist.js';
 import { checkLoginRateLimit } from './rate-limit.js';
 import { safeEqual, SessionStore, type Session } from './sessions.js';
@@ -33,6 +34,7 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const DIRECTORY_LOGIN_PATH = `${API_PREFIX}/auth/ldap/login`;
 const OIDC_LOGIN_PATH = `${API_PREFIX}/auth/oidc/login`;
 const CSRF_EXEMPT = new Set([DIRECTORY_LOGIN_PATH]);
+const OIDC_STATE_COOKIE = 'wfb_oidc';
 
 const pathOf = (url: string) => url.split('?')[0]!;
 const isApiPath = (path: string) => path === API_PREFIX || path.startsWith(`${API_PREFIX}/`);
@@ -44,7 +46,7 @@ export default fp<ModuleOptions>(
   async (app, { config, services }) => {
     const { kv, prisma } = services;
     const sessions = new SessionStore(kv, config.session.ttlSeconds);
-    const oidc = config.oidc ? new OidcService(config.oidc, kv, !config.isProd) : null;
+    const oidc = config.oidc ? new OidcService(config.oidc, kv, !config.isProd, config.appUrl) : null;
 
     const cookieOptions = {
       signed: true,
@@ -53,6 +55,8 @@ export default fp<ModuleOptions>(
       path: '/',
       secure: config.session.secureCookie,
     };
+    // Lax is required: the IdP sends the browser back with a cross-site top-level GET.
+    const oidcStateCookieOptions = { ...cookieOptions, path: `${API_PREFIX}/auth/oidc` };
 
     app.decorateRequest('authSession', null);
 
@@ -66,7 +70,9 @@ export default fp<ModuleOptions>(
       }
 
       const path = pathOf(request.url);
-      if (!request.authSession || SAFE_METHODS.has(request.method) || !isApiPath(path)) return;
+      if (SAFE_METHODS.has(request.method) || !isApiPath(path)) return;
+      assertSameOrigin(request, config.appUrl);
+      if (!request.authSession) return;
       if (CSRF_EXEMPT.has(path)) return;
       const header = request.headers[CSRF_HEADER];
       const token = Array.isArray(header) ? header[0] : header;
@@ -76,9 +82,14 @@ export default fp<ModuleOptions>(
     });
 
     /** Starts a fresh session (new id and CSRF token) to prevent session fixation. */
-    async function startSession(request: FastifyRequest, reply: FastifyReply, user: User) {
+    async function startSession(
+      request: FastifyRequest,
+      reply: FastifyReply,
+      user: User,
+      extra: { idToken?: string } = {},
+    ) {
       if (request.authSession) await sessions.destroy(request.authSession.id);
-      const session = await sessions.create(user);
+      const session = await sessions.create(user, extra);
       request.authSession = session;
       request.user = user;
       reply.setCookie(SESSION_COOKIE, session.id, { ...cookieOptions, maxAge: config.session.ttlSeconds });
@@ -93,7 +104,9 @@ export default fp<ModuleOptions>(
     app.post(DIRECTORY_LOGIN_PATH, async (request, reply): Promise<MeResponse> => {
       const directory = config.directory;
       if (!directory) throw notFound('Directory login is not enabled');
+      assertJsonBody(request);
       const { username, password } = parse(DirectoryLoginRequest, request.body);
+      request.audit = { action: 'login', username, detail: { provider: directory.kind } };
       await checkLoginRateLimit(kv, config.loginRateLimitPerMinute, request.ip, username);
 
       let user: User | null;
@@ -121,7 +134,9 @@ export default fp<ModuleOptions>(
       if (!oidc) throw notFound('OIDC login is not enabled');
       const { returnTo } = (request.query ?? {}) as { returnTo?: unknown };
       try {
-        return reply.redirect(await oidc.authorizationUrl(returnTo));
+        const { url, state } = await oidc.authorizationUrl(returnTo);
+        reply.setCookie(OIDC_STATE_COOKIE, state, { ...oidcStateCookieOptions, maxAge: 600 });
+        return reply.redirect(url);
       } catch (err) {
         request.log.error({ err: err instanceof OidcError ? err.cause : err }, 'oidc login failed');
         return reply.redirect('/?authError=oidc_unavailable');
@@ -131,10 +146,21 @@ export default fp<ModuleOptions>(
     app.get(`${API_PREFIX}/auth/oidc/callback`, async (request, reply) => {
       if (!oidc) throw notFound('OIDC login is not enabled');
       const query = request.url.includes('?') ? request.url.slice(request.url.indexOf('?') + 1) : '';
+      const rawState = request.cookies[OIDC_STATE_COOKIE];
+      const unsignedState = rawState ? request.unsignCookie(rawState) : null;
+      const browserState = unsignedState?.valid ? unsignedState.value : null;
+      reply.clearCookie(OIDC_STATE_COOKIE, oidcStateCookieOptions);
       try {
-        const { user, subject, returnTo } = await oidc.handleCallback(query);
-        await startSession(request, reply, user);
+        const { user, subject, returnTo, idToken } = await oidc.handleCallback(query, browserState);
+        await startSession(request, reply, user, { idToken });
         await persistUser(prisma, user, subject, request.log);
+        void app.audit.record({
+          action: 'login',
+          user,
+          outcome: 'success',
+          ip: request.ip,
+          detail: { provider: 'oidc' },
+        });
         request.log.info({ username: user.username, provider: user.provider }, 'login');
         return reply.redirect(returnTo);
       } catch (err) {
@@ -143,17 +169,33 @@ export default fp<ModuleOptions>(
           { err: err instanceof OidcError ? (err.cause ?? err) : err, code },
           'oidc callback failed',
         );
+        void app.audit.record({
+          action: 'login',
+          user: null,
+          outcome: 'failure',
+          ip: request.ip,
+          detail: { provider: 'oidc', error: code },
+        });
         return reply.redirect(`/?authError=${code}`);
       }
     });
 
-    app.post(`${API_PREFIX}/auth/logout`, async (request, reply): Promise<OkResponse> => {
-      requireUser(request);
-      if (request.authSession) await sessions.destroy(request.authSession.id);
+    app.post(`${API_PREFIX}/auth/logout`, async (request, reply): Promise<LogoutResponse> => {
+      const user = requireUser(request);
+      const session = request.authSession;
+      request.audit = { action: 'logout', user };
+      if (session) await sessions.destroy(session.id);
       request.authSession = null;
       request.user = null;
-      reply.clearCookie(SESSION_COOKIE, { path: '/' });
-      return { ok: true };
+      reply.clearCookie(SESSION_COOKIE, {
+        path: '/',
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: config.session.secureCookie,
+      });
+      const redirectUrl =
+        oidc && user.provider === 'oidc' ? await oidc.endSessionUrl(session?.idToken) : null;
+      return redirectUrl ? { ok: true, redirectUrl } : { ok: true };
     });
 
     app.get(`${API_PREFIX}/auth/me`, async (request): Promise<MeResponse> => {
@@ -161,5 +203,5 @@ export default fp<ModuleOptions>(
       return { user, csrfToken: request.authSession!.csrfToken };
     });
   },
-  { name: 'wfb-auth' },
+  { name: 'wfb-auth', dependencies: ['wfb-audit'] },
 );

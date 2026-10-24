@@ -61,5 +61,5 @@ export default fp<ModuleOptions>(
       registerFileRoutes(scoped, files, config);
     });
   },
-  { name: 'wfb-files' },
+  { name: 'wfb-files', dependencies: ['wfb-audit'] },
 );

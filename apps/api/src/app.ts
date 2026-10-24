@@ -1,6 +1,7 @@
 import fastifyCookie from '@fastify/cookie';
 import type { User } from '@wfb/contracts';
 import Fastify, { type FastifyInstance } from 'fastify';
+import auditModule from './audit/index.js';
 import authModule from './auth/index.js';
 import type { Config } from './config.js';
 import filesModule from './files/index.js';
@@ -10,6 +11,7 @@ import './lib/auth-context.js';
 import { createPrisma } from './lib/db.js';
 import { registerErrorHandler } from './lib/errors.js';
 import { createStore } from './lib/kv.js';
+import { registerSecurityHeaders } from './lib/security-headers.js';
 import type { ModuleOptions, Services } from './lib/module.js';
 import previewModule from './preview/index.js';
 import { registerStatic } from './static.js';
@@ -45,12 +47,14 @@ export async function buildApp({
   });
 
   registerErrorHandler(app);
+  registerSecurityHeaders(app, { hsts: config.session.secureCookie });
   app.decorateRequest('user', null);
   await app.register(fastifyCookie, { secret: config.session.secret });
 
   registerHealth(app, services);
 
   const moduleOptions: ModuleOptions = { config, services };
+  await app.register(auditModule, moduleOptions);
   if (testUser) {
     app.addHook('onRequest', async (request) => {
       request.user = testUser;

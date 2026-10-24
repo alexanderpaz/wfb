@@ -8,6 +8,7 @@ import { testConfig } from '../helpers.js';
 import { MockIdp } from './mock-idp.js';
 
 const APP_URL = 'http://localhost:5173';
+const OIDC_STATE_COOKIE = 'wfb_oidc';
 const REDIRECT_URI = `${APP_URL}/api/auth/oidc/callback`;
 
 const claims = {
@@ -42,6 +43,9 @@ async function createApp(env: Record<string, string> = {}) {
   return app;
 }
 
+/** Cookie binding the pending login to the browser that started it. */
+let stateCookie: string | undefined;
+
 async function startLogin(returnTo?: string) {
   const res = await app.inject({
     method: 'GET',
@@ -49,11 +53,17 @@ async function startLogin(returnTo?: string) {
     query: returnTo === undefined ? {} : { returnTo },
   });
   expect(res.statusCode).toBe(302);
+  stateCookie = res.cookies.find((c) => c.name === OIDC_STATE_COOKIE)?.value;
   return res.headers.location as string;
 }
 
-async function callback(query: Record<string, string>) {
-  return app.inject({ method: 'GET', url: '/api/auth/oidc/callback', query });
+async function callback(query: Record<string, string>, cookie = stateCookie) {
+  return app.inject({
+    method: 'GET',
+    url: '/api/auth/oidc/callback',
+    query,
+    headers: cookie ? { cookie: `${OIDC_STATE_COOKIE}=${cookie}` } : {},
+  });
 }
 
 async function fullLogin(returnTo?: string, userClaims: Record<string, unknown> = claims) {
@@ -220,6 +230,38 @@ describe('GET /api/auth/oidc/callback', () => {
     expect(res.headers.location).toBe('/?authError=oidc_failed');
   });
 
+  it('sets the state cookie HttpOnly, Lax and scoped to the OIDC routes', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/auth/oidc/login' });
+    const cookie = res.cookies.find((c) => c.name === OIDC_STATE_COOKIE)!;
+    expect(cookie).toMatchObject({ httpOnly: true, sameSite: 'Lax', path: '/api/auth/oidc', maxAge: 600 });
+  });
+
+  it('rejects a callback for a login started by another browser (login CSRF)', async () => {
+    // The attacker starts a login and authenticates at the IdP with their own account...
+    const location = await startLogin();
+    const attackerCookie = stateCookie;
+    const state = new URL(location).searchParams.get('state')!;
+    const code = idp.authorize(location, { ...claims, sub: 'attacker', preferred_username: 'mallory' });
+    // ...then makes the victim's browser load the callback URL.
+    const noCookie = await callback({ code, state }, '');
+    expect(noCookie.headers.location).toBe('/?authError=oidc_state');
+    expect(noCookie.cookies.find((c) => c.name === SESSION_COOKIE)).toBeUndefined();
+
+    await startLogin();
+    const otherLogin = await callback({ code, state }, stateCookie);
+    expect(otherLogin.headers.location).toBe('/?authError=oidc_state');
+    expect(otherLogin.cookies.find((c) => c.name === SESSION_COOKIE)).toBeUndefined();
+    expect(attackerCookie).toBeTruthy();
+  });
+
+  it('rejects a tampered (unsigned) state cookie', async () => {
+    const location = await startLogin();
+    const state = new URL(location).searchParams.get('state')!;
+    const code = idp.authorize(location, claims);
+    const res = await callback({ code, state }, state);
+    expect(res.headers.location).toBe('/?authError=oidc_state');
+  });
+
   it('rotates an existing session', async () => {
     const a = (await fullLogin()).res.cookies.find((c) => c.name === SESSION_COOKIE)!.value;
     const location = await startLogin();
@@ -228,7 +270,7 @@ describe('GET /api/auth/oidc/callback', () => {
       method: 'GET',
       url: '/api/auth/oidc/callback',
       query: { code, state: new URL(location).searchParams.get('state')! },
-      headers: { cookie: `${SESSION_COOKIE}=${a}` },
+      headers: { cookie: `${SESSION_COOKIE}=${a}; ${OIDC_STATE_COOKIE}=${stateCookie}` },
     });
     const b = res.cookies.find((c) => c.name === SESSION_COOKIE)!.value;
     expect(b).not.toBe(a);
