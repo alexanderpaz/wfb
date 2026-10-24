@@ -112,14 +112,19 @@ export function AuthProvider({ children, onSignOut, navigate }: AuthProviderProp
   );
 
   const logout = useCallback(async () => {
+    let redirectUrl: string | undefined;
     try {
-      await api.logout();
+      redirectUrl = (await api.logout()).redirectUrl;
     } catch {
       // the session is dropped locally even if the server call fails
     }
     setSessionExpired(false);
     signOut();
-  }, [signOut]);
+    // OIDC: end the IdP session too; it sends the browser back to the app.
+    if (redirectUrl && /^https?:\/\//i.test(redirectUrl)) {
+      (navigate ?? ((u: string) => window.location.assign(u)))(redirectUrl);
+    }
+  }, [signOut, navigate]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

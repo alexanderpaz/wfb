@@ -208,7 +208,7 @@ describe('loadSharesConfig', () => {
 
   it('explains a directory left by a Docker bind mount of a missing file', () => {
     expect(() => loadSharesConfig(dir)).toThrow(SharesConfigError);
-    expect(() => loadSharesConfig(dir)).toThrow(/is a directory.*SHARES_CONFIG_HOST_PATH/);
+    expect(() => loadSharesConfig(dir)).toThrow(/is a directory.*absolute host path/);
   });
 
   it('reports a missing file', () => {

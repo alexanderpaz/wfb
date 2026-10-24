@@ -36,18 +36,38 @@ jobs:
         with:
           context: .
           push: false
-          tags: wfb:ci
+          load: true
+          # Tagged as the compose project image so the smoke test runs it without rebuilding.
+          tags: wfb-ci-app:latest
+          build-args: |
+            REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Image size
+        run: docker image ls wfb-ci-app:latest
       - name: Validate Coolify compose
         run: docker compose -f docker-compose.yml config --quiet
-        env:
-          SHARES_CONFIG_HOST_PATH: ./config/shares.example.yaml
-          SERVICE_USER_POSTGRES: ci
-          SERVICE_PASSWORD_POSTGRES: ci
-          SERVICE_PASSWORD_REDIS: ci
-          SERVICE_BASE64_64_SESSION: ci
-          SERVICE_URL_APP: https://wfb.example.org
+      - name: Smoke test compose stack
+        run: |
+          mkdir -p "$SHARES_HOST_PATH"/public "$SHARES_HOST_PATH"/engineering "$SHARES_HOST_PATH"/finance
+          docker compose -p wfb-ci up -d --no-build --wait --wait-timeout 180
+          docker compose -p wfb-ci exec -T app node -e \
+            "fetch('http://127.0.0.1:3000/api/healthz').then(r=>r.json()).then(b=>{console.log(b);process.exit(b.status==='ok'?0:1)})"
+      - if: failure()
+        run: docker compose -p wfb-ci logs --tail 200
+      - if: always()
+        run: docker compose -p wfb-ci down -v
+    env:
+      SERVICE_USER_POSTGRES: ci
+      SERVICE_PASSWORD_POSTGRES: ci-postgres-password
+      SERVICE_PASSWORD_REDIS: ci-redis-password
+      SERVICE_BASE64_64_SESSION: ci-session-secret-0123456789abcdef0123456789abcdef
+      SERVICE_URL_APP: https://wfb.example.org
+      SHARES_HOST_PATH: ${{ github.workspace }}/.ci-shares
+      SHARES_CONFIG_HOST_DIR: ${{ github.workspace }}/config
+      SHARES_CONFIG_FILE: shares.example.yaml
+      PUID: '1001'
+      PGID: '1001'
 
   e2e:
     name: e2e (playwright)

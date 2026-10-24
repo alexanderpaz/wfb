@@ -3,20 +3,29 @@ import {
   ApiError,
   CSRF_HEADER,
   type AuthProvidersResponse,
+  type CreateUploadRequest,
   type DeleteRequest,
   type DeleteResponse,
   type DirectoryLoginRequest,
   type EntryResponse,
   type FileRef,
+  type JobResponse,
+  type JobsResponse,
   type ListResponse,
+  type LogoutResponse,
   type MeResponse,
   type MkdirRequest,
   type OkResponse,
   type RenameRequest,
+  type SearchQuery,
+  type SearchResponse,
   type SharesResponse,
   type TransferRequest,
   type TransferResponse,
+  type TrashActionRequest,
+  type TrashListResponse,
   type UploadResponse,
+  type UploadSession,
 } from '@wfb/contracts';
 
 export class ApiRequestError extends Error {
@@ -91,7 +100,7 @@ export const api = {
   providers: () => request<AuthProvidersResponse>('GET', '/auth/providers'),
   login: (body: DirectoryLoginRequest) => request<MeResponse>('POST', '/auth/ldap/login', { body }),
   oidcLoginUrl: (returnTo?: string) => apiUrl('/auth/oidc/login', { returnTo }),
-  logout: () => request<OkResponse>('POST', '/auth/logout'),
+  logout: () => request<LogoutResponse>('POST', '/auth/logout'),
   me: () => request<MeResponse>('GET', '/auth/me'),
 
   shares: () => request<SharesResponse>('GET', '/shares'),
@@ -108,4 +117,33 @@ export const api = {
   },
   downloadUrl: (r: FileRef, inline = false) =>
     apiUrl('/files/download', { ...ref(r), inline: inline || undefined }),
+
+  jobs: () => request<JobsResponse>('GET', '/jobs'),
+  job: (id: string) => request<JobResponse>('GET', `/jobs/${encodeURIComponent(id)}`),
+  cancelJob: (id: string) => request<JobResponse>('POST', `/jobs/${encodeURIComponent(id)}/cancel`),
+  /** SSE stream of Job updates (same-origin cookies). */
+  jobEventsUrl: (id: string) => apiUrl(`/jobs/${encodeURIComponent(id)}/events`),
+
+  search: (q: SearchQuery, signal?: AbortSignal) =>
+    request<SearchResponse>('GET', '/search', {
+      query: { share: q.share, path: q.path, q: q.q, limit: q.limit },
+      signal,
+    }),
+
+  trash: (share: string) => request<TrashListResponse>('GET', '/trash', { query: { share } }),
+  restoreTrash: (body: TrashActionRequest) => request<OkResponse>('POST', '/trash/restore', { body }),
+  purgeTrash: (body: TrashActionRequest) => request<OkResponse>('POST', '/trash/purge', { body }),
+
+  createUpload: (body: CreateUploadRequest) => request<UploadSession>('POST', '/uploads', { body }),
+  uploadStatus: (id: string) => request<UploadSession>('GET', `/uploads/${encodeURIComponent(id)}`),
+  uploadChunk: (id: string, offset: number, chunk: Blob, signal?: AbortSignal) =>
+    request<UploadSession>('PUT', `/uploads/${encodeURIComponent(id)}`, {
+      query: { offset },
+      // The Blob type becomes the request content type.
+      raw: new Blob([chunk], { type: 'application/octet-stream' }),
+      signal,
+    }),
+  completeUpload: (id: string) =>
+    request<EntryResponse>('POST', `/uploads/${encodeURIComponent(id)}/complete`),
+  abortUpload: (id: string) => request<OkResponse>('DELETE', `/uploads/${encodeURIComponent(id)}`),
 };

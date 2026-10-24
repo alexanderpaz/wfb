@@ -131,8 +131,7 @@ export function loadSharesConfig(
     throw new SharesConfigError(
       file,
       'it is a directory, not a file. If it is a Docker bind mount, the host file does not exist ' +
-        '(Docker created an empty directory in its place): create it and point SHARES_CONFIG_HOST_PATH ' +
-        'to its absolute path.',
+        '(Docker created an empty directory in its place): create it and mount it from an absolute host path.',
     );
   }
   const text = readFileSync(file, 'utf8');
