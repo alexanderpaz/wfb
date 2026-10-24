@@ -326,6 +326,14 @@ describe('oidcFailureHint', () => {
     expect(oidcFailureHint(new Error('OIDC code exchange failed', { cause: err }))).toMatch(/Signing Key/);
   });
 
+  it('explains encrypted ID tokens (Authentik provider with an Encryption Key)', () => {
+    const cause = Object.assign(new Error('JWE decryption is not configured'), {
+      code: 'OAUTH_UNSUPPORTED_OPERATION',
+    });
+    const err = Object.assign(new Error('unsupported operation'), { cause });
+    expect(oidcFailureHint(new Error('OIDC code exchange failed', { cause: err }))).toMatch(/Encryption Key/);
+  });
+
   it('returns undefined for unknown errors', () => {
     expect(oidcFailureHint(new Error('something else'))).toBeUndefined();
   });

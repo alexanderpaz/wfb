@@ -47,6 +47,9 @@ export function oidcFailureHint(err: unknown): string | undefined {
     e = cause;
   }
   const text = parts.join(' | ');
+  if (/JWE/.test(text)) {
+    return 'The IdP encrypts ID tokens (JWE), which is not supported. In Authentik clear Providers → <provider> → Encryption Key (keep the Signing Key).';
+  }
   if (/alg=HS\d+|unsupported JWS|JWT "alg"/.test(text)) {
     return 'The IdP signs ID tokens with a symmetric key (HS256), which is not supported. In Authentik select a certificate in Providers → <provider> → Signing Key.';
   }
