@@ -30,4 +30,3 @@ export function registerTrashRoutes(app: FastifyInstance, trash: TrashService): 
     return { ok: true };
   });
 }
-

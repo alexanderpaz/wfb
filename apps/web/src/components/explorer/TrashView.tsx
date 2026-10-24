@@ -30,7 +30,10 @@ export function TrashView({ share }: TrashViewProps) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: trashQueryKey(share.id), queryFn: () => api.trash(share.id) });
   const items = useMemo(
-    () => [...(q.data?.items ?? [])].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt) || collator.compare(a.name, b.name)),
+    () =>
+      [...(q.data?.items ?? [])].sort(
+        (a, b) => b.deletedAt.localeCompare(a.deletedAt) || collator.compare(a.name, b.name),
+      ),
     [q.data],
   );
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -64,7 +67,9 @@ export function TrashView({ share }: TrashViewProps) {
       toast.success(what === 'restore' ? `Se ha restaurado ${n}` : `Se ha eliminado ${n} permanentemente`);
     } catch (e) {
       toast.error(
-        what === 'restore' ? 'No se pudieron restaurar los elementos' : 'No se pudieron eliminar los elementos',
+        what === 'restore'
+          ? 'No se pudieron restaurar los elementos'
+          : 'No se pudieron eliminar los elementos',
         errorMessage(e),
       );
     } finally {
@@ -167,10 +172,7 @@ export function TrashView({ share }: TrashViewProps) {
                 onClick={(e) => onRowClick(item, e)}
               >
                 <span className="wfb-cell wfb-cell-name">
-                  <FileIcon
-                    kind={fileKind({ name: item.name, type: item.type, mime: null })}
-                    size={18}
-                  />
+                  <FileIcon kind={fileKind({ name: item.name, type: item.type, mime: null })} size={18} />
                   <span className="wfb-item-name" title={item.name}>
                     {item.name}
                   </span>

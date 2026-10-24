@@ -40,13 +40,22 @@ export function registerUploadRoutes(app: FastifyInstance, uploads: UploadServic
       throw Object.assign(new Error('Expected an application/octet-stream body'), { statusCode: 415 });
     }
     const declared = Number(request.headers['content-length']);
-    return uploads.append(user, request.params.id, offset, body, Number.isFinite(declared) ? declared : undefined);
+    return uploads.append(
+      user,
+      request.params.id,
+      offset,
+      body,
+      Number.isFinite(declared) ? declared : undefined,
+    );
   });
 
-  app.post<{ Params: { id: string } }>(p('/uploads/:id/complete'), async (request): Promise<EntryResponse> => {
-    const user = requireUser(request);
-    return { entry: await uploads.complete(user, request.params.id) };
-  });
+  app.post<{ Params: { id: string } }>(
+    p('/uploads/:id/complete'),
+    async (request): Promise<EntryResponse> => {
+      const user = requireUser(request);
+      return { entry: await uploads.complete(user, request.params.id) };
+    },
+  );
 
   app.delete<{ Params: { id: string } }>(p('/uploads/:id'), async (request): Promise<OkResponse> => {
     const user = requireUser(request);

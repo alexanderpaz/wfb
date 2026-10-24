@@ -79,7 +79,10 @@ function transferResponse(kind: 'copy' | 'move', b: ReturnType<typeof TransferRe
     const job = store.startJob(kind, b.items, b.destination, b.conflict);
     return HttpResponse.json({ mode: 'job', jobId: job.id });
   }
-  return HttpResponse.json({ mode: 'sync', results: store.transfer(kind, b.items, b.destination, b.conflict) });
+  return HttpResponse.json({
+    mode: 'sync',
+    results: store.transfer(kind, b.items, b.destination, b.conflict),
+  });
 }
 
 const encoder = new TextEncoder();
@@ -87,7 +90,8 @@ const encoder = new TextEncoder();
 /** text/event-stream of Job snapshots, closed when the job finishes. */
 function jobEvents(id: string): Response {
   const first = store.getJob(id);
-  const done = (job: Job) => job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled';
+  const done = (job: Job) =>
+    job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled';
   let unsubscribe = () => {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -296,7 +300,8 @@ export const handlers: HttpHandler[] = [
     url('/uploads/:id'),
     guarded(async ({ request, params }) => {
       const offset = Number(query(request).offset);
-      if (!Number.isInteger(offset) || offset < 0) throw new MockError(400, 'BAD_REQUEST', 'offset no válido');
+      if (!Number.isInteger(offset) || offset < 0)
+        throw new MockError(400, 'BAD_REQUEST', 'offset no válido');
       const data = new Uint8Array(await request.arrayBuffer());
       return HttpResponse.json(store.appendUpload(param(params, 'id'), offset, data));
     }),

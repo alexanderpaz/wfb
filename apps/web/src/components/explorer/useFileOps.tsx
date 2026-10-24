@@ -469,9 +469,7 @@ export function useFileOps(describe: (ref: FileRef) => string) {
       }
 
       const chunked = Promise.all(
-        large.map((f) =>
-          uploadChunked(dir, f, strategy).finally(() => void invalidateDirs(qc, [dir])),
-        ),
+        large.map((f) => uploadChunked(dir, f, strategy).finally(() => void invalidateDirs(qc, [dir]))),
       );
       const simple = files.length > 0 ? uploadSimple(dir, files, strategy) : Promise.resolve([]);
       const [big, small] = await Promise.all([chunked, simple]);

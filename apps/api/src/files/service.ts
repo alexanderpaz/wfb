@@ -192,7 +192,8 @@ export class FilesService {
     if (plan.conflict !== 'fail') return;
     for (const src of plan.sources) {
       const name = basename(src.virtualPath);
-      const sameParent = src.shareId === plan.dest.shareId && dirname(src.virtualPath) === plan.dest.virtualPath;
+      const sameParent =
+        src.shareId === plan.dest.shareId && dirname(src.virtualPath) === plan.dest.virtualPath;
       if (plan.kind === 'move' && sameParent) return;
       if (!sameParent && !(await plan.dest.provider.exists(joinPath(plan.dest.virtualPath, name)))) return;
     }

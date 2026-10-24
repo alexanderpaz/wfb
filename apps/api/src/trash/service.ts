@@ -35,7 +35,12 @@ async function moveEntry(src: string, dst: string): Promise<void> {
     await rename(src, dst);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'EXDEV') throw err;
-    await cp(src, dst, { recursive: true, verbatimSymlinks: true, preserveTimestamps: true, errorOnExist: true });
+    await cp(src, dst, {
+      recursive: true,
+      verbatimSymlinks: true,
+      preserveTimestamps: true,
+      errorOnExist: true,
+    });
     await rm(src, { recursive: true });
   }
 }
@@ -140,9 +145,7 @@ export class TrashService implements TrashHandler {
     if (!force && now - (this.lastPurge.get(share.path) ?? 0) < this.purgeCheckMs) return 0;
     this.lastPurge.set(share.path, now);
     const root = await this.trashDir(share);
-    const expired = (await this.items(share)).filter(
-      (i) => now - Date.parse(i.deletedAt) > this.retentionMs,
-    );
+    const expired = (await this.items(share)).filter((i) => now - Date.parse(i.deletedAt) > this.retentionMs);
     await Promise.all(expired.map((i) => rm(path.join(root, i.id), { recursive: true, force: true })));
     return expired.length;
   }

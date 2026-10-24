@@ -110,7 +110,13 @@ export class UploadService {
   }
 
   /** Appends `body` at `offset`, which must be the current offset. */
-  async append(user: User, id: string, offset: number, body: Readable, length?: number): Promise<UploadSession> {
+  async append(
+    user: User,
+    id: string,
+    offset: number,
+    body: Readable,
+    length?: number,
+  ): Promise<UploadSession> {
     const state = await this.load(user, id);
     if (this.busy.has(id)) throw conflict('Another chunk is being written', { offset: state.offset });
     if (offset !== state.offset) throw conflict('Offset mismatch', { offset: state.offset });
@@ -118,7 +124,9 @@ export class UploadService {
     const max = Math.min(this.chunkSize, remaining);
     if (length !== undefined && length > max) {
       body.resume();
-      throw length > remaining ? badRequest('Chunk exceeds the declared size', { offset: state.offset }) : tooLarge(max);
+      throw length > remaining
+        ? badRequest('Chunk exceeds the declared size', { offset: state.offset })
+        : tooLarge(max);
     }
 
     this.busy.add(id);

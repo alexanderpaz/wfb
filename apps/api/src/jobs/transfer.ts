@@ -78,9 +78,14 @@ async function copyFile(src: string, dst: string, progress: CopyProgress): Promi
     },
   });
   try {
-    await pipeline(createReadStream(src, { highWaterMark: 256 * 1024 }), counter, createWriteStream(temp, { flags: 'wx' }), {
-      signal: progress.signal,
-    });
+    await pipeline(
+      createReadStream(src, { highWaterMark: 256 * 1024 }),
+      counter,
+      createWriteStream(temp, { flags: 'wx' }),
+      {
+        signal: progress.signal,
+      },
+    );
     await utimes(temp, st.atime, st.mtime).catch(() => {});
     await rename(temp, dst);
   } catch (err) {
@@ -119,10 +124,12 @@ async function freeTarget(target: TransferTarget): Promise<string> {
   const provider = local(target.provider);
   provider.assertValidName(basename(target.path));
   const dst = await provider.entryPath(target.path);
-  if (await lstat(dst).then(
-    () => true,
-    () => false,
-  )) {
+  if (
+    await lstat(dst).then(
+      () => true,
+      () => false,
+    )
+  ) {
     throw conflict('An entry with that name already exists');
   }
   return dst;

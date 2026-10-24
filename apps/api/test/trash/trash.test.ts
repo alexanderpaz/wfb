@@ -125,9 +125,9 @@ describe('trash', () => {
     expect((await post('/api/trash/purge', { share: 'public', ids: ['lz1abcde-0011aabb'] })).statusCode).toBe(
       403,
     );
-    expect((await post('/api/trash/restore', { share: 'finance', ids: ['lz1abcde-0011aabb'] })).statusCode).toBe(
-      403,
-    );
+    expect(
+      (await post('/api/trash/restore', { share: 'finance', ids: ['lz1abcde-0011aabb'] })).statusCode,
+    ).toBe(403);
     expect((await post('/api/trash/restore', { share: 'home', ids: ['../../etc'] })).statusCode).toBe(400);
     expect((await post('/api/trash/restore', { share: 'home', ids: ['lz1abcde-0011aabb'] })).statusCode).toBe(
       404,

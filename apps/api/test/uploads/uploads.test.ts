@@ -56,7 +56,11 @@ describe('resumable uploads', () => {
     expect(await readdir(path.join(fx.root, 'homes/alice'))).toEqual([]);
     res = await complete(session.id);
     expect(res.statusCode).toBe(200);
-    expect(EntryResponse.parse(res.json()).entry).toMatchObject({ name: 'video.bin', path: '/video.bin', size: 10 });
+    expect(EntryResponse.parse(res.json()).entry).toMatchObject({
+      name: 'video.bin',
+      path: '/video.bin',
+      size: 10,
+    });
     expect(await readFile(path.join(fx.root, 'homes/alice/video.bin'), 'utf8')).toBe('helloworld');
     expect((await status(session.id)).statusCode).toBe(404);
     expect(await readdir(path.join(fx.tmp, 'data/uploads'))).toEqual([]);

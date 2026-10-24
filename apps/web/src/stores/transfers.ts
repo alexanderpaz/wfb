@@ -47,8 +47,7 @@ export const useTransfers = create<TransfersState>((set) => ({
         { failures: [], error: null, cancelling: false, ...task },
       ],
     })),
-  update: (id, patch) =>
-    set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
+  update: (id, patch) => set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
   remove: (id) => set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) })),
   clearFinished: () => set((s) => ({ tasks: s.tasks.filter((t) => t.status === 'running') })),
   setCollapsed: (collapsed) => set({ collapsed }),

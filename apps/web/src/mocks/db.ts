@@ -614,7 +614,12 @@ export function transferSize(items: FileRef[]): number {
 }
 
 /** Same upfront 409 as the server when every item conflicts with "fail". */
-function assertNotAllConflicting(kind: 'copy' | 'move', items: FileRef[], destination: FileRef, conflict: ConflictStrategy) {
+function assertNotAllConflicting(
+  kind: 'copy' | 'move',
+  items: FileRef[],
+  destination: FileRef,
+  conflict: ConflictStrategy,
+) {
   if (conflict !== 'fail') return;
   const dest = resolveDir(destination, 'write');
   const conflicts = items.filter((item) => {
@@ -623,11 +628,14 @@ function assertNotAllConflicting(kind: 'copy' | 'move', items: FileRef[], destin
     return !!node && !(kind === 'move' && sameParent) && dest.children.has(node.name);
   });
   if (conflicts.length > 0 && conflicts.length === items.length) {
-    throw new MockError(409, 'CONFLICT', 'El destino ya contiene elementos con el mismo nombre', { conflicts });
+    throw new MockError(409, 'CONFLICT', 'El destino ya contiene elementos con el mismo nombre', {
+      conflicts,
+    });
   }
 }
 
-const isDone = (job: Job) => job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled';
+const isDone = (job: Job) =>
+  job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled';
 
 function emit(j: MockJob) {
   j.job = { ...j.job, updatedAt: new Date().toISOString() };
@@ -690,7 +698,14 @@ export function startJob(
           error: e instanceof Error ? e.message : 'Error',
         }));
       }
-      j.job = { ...j.job, status: 'completed', doneBytes: total, doneItems: items.length, currentItem: null, results };
+      j.job = {
+        ...j.job,
+        status: 'completed',
+        doneBytes: total,
+        doneItems: items.length,
+        currentItem: null,
+        results,
+      };
     } else {
       j.job = { ...j.job, doneBytes, doneItems, currentItem: items[doneItems]?.path ?? null };
       j.timer = setTimeout(tick, db.jobSettings.tickMs);
@@ -736,7 +751,12 @@ const session = (u: MockUpload): UploadSession => ({
   chunkSize: db.uploadChunkSize,
 });
 
-export function createUpload(ref: FileRef, name: string, size: number, conflict: ConflictStrategy): UploadSession {
+export function createUpload(
+  ref: FileRef,
+  name: string,
+  size: number,
+  conflict: ConflictStrategy,
+): UploadSession {
   const parent = resolveDir(ref, 'write');
   if (conflict === 'fail' && parent.children.has(name)) {
     throw new MockError(409, 'CONFLICT', `Ya existe "${name}" en el destino`, { conflicts: [{ name }] });
@@ -756,7 +776,8 @@ export const uploadStatus = (id: string) => session(mockUpload(id));
 
 export function appendUpload(id: string, offset: number, data: Uint8Array): UploadSession {
   const u = mockUpload(id);
-  if (offset !== u.offset) throw new MockError(409, 'CONFLICT', 'Desplazamiento incorrecto', { offset: u.offset });
+  if (offset !== u.offset)
+    throw new MockError(409, 'CONFLICT', 'Desplazamiento incorrecto', { offset: u.offset });
   if (u.offset + data.byteLength > u.size) {
     throw new MockError(400, 'BAD_REQUEST', 'El fragmento supera el tamaño declarado', { offset: u.offset });
   }

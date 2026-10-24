@@ -46,11 +46,7 @@ export class JobManager {
     this.timer.unref();
   }
 
-  start(
-    owner: string,
-    init: Pick<Job, 'kind' | 'totalBytes' | 'totalItems'>,
-    run: JobRunner,
-  ): Job {
+  start(owner: string, init: Pick<Job, 'kind' | 'totalBytes' | 'totalItems'>, run: JobRunner): Job {
     const now = new Date().toISOString();
     const job: Job = {
       id: randomUUID(),

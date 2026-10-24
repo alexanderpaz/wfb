@@ -79,7 +79,10 @@ describe('chunkedUpload', () => {
   it('resumes from the server offset after a network error', async () => {
     const { state, client, failures } = fakeServer(10);
     // Second chunk reaches the server but the response is lost.
-    failures.push(() => null, () => 'commit-then-fail');
+    failures.push(
+      () => null,
+      () => 'commit-then-fail',
+    );
     const result = await chunkedUpload({
       file: file('0123456789'),
       name: 'f.bin',
@@ -102,7 +105,13 @@ describe('chunkedUpload', () => {
       offset: 0,
       chunkSize: 4,
     });
-    await chunkedUpload({ file: file('0123456789'), name: 'f.bin', destination: dest, client, maxRetries: 0 });
+    await chunkedUpload({
+      file: file('0123456789'),
+      name: 'f.bin',
+      destination: dest,
+      client,
+      maxRetries: 0,
+    });
     expect(state.received).toEqual(['0123', '4567', '89']);
   });
 

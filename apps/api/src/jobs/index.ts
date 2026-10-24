@@ -42,7 +42,8 @@ export default fp<ModuleOptions>(
     app.decorate('trash', trash);
     app.decorate('uploads', uploads);
 
-    const sweep = () => void uploads.cleanupStale().catch((err) => app.log.warn({ err }, 'upload cleanup failed'));
+    const sweep = () =>
+      void uploads.cleanupStale().catch((err) => app.log.warn({ err }, 'upload cleanup failed'));
     const timer = setInterval(sweep, HOUR);
     timer.unref();
     if (config.env !== 'test') sweep();

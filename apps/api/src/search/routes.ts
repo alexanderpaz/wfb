@@ -12,4 +12,3 @@ export function registerSearchRoutes(app: FastifyInstance, search: SearchService
     return search.search(user, parse(SearchQuery, request.query));
   });
 }
-

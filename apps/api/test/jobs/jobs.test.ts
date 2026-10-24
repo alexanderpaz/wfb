@@ -163,7 +163,11 @@ describe('transfer jobs', () => {
   });
 
   it('hides jobs of other users (404)', async () => {
-    const other = app.jobs.start(users.bob.id, { kind: 'copy', totalBytes: 0, totalItems: 0 }, async () => {});
+    const other = app.jobs.start(
+      users.bob.id,
+      { kind: 'copy', totalBytes: 0, totalItems: 0 },
+      async () => {},
+    );
     expect((await get(`/api/jobs/${other.id}`)).statusCode).toBe(404);
     expect((await get(`/api/jobs/${other.id}/events`)).statusCode).toBe(404);
     expect((await post(`/api/jobs/${other.id}/cancel`)).statusCode).toBe(404);
@@ -176,10 +180,14 @@ describe('job events (SSE)', () => {
   it('streams the current state, throttled updates and the final state, then ends', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
-    const job = app.jobs.start(users.alice.id, { kind: 'copy', totalBytes: 100, totalItems: 100 }, async (ctx) => {
-      await gate;
-      for (let i = 1; i <= 100; i++) ctx.update({ doneItems: i, doneBytes: i, currentItem: `/f${i}` });
-    });
+    const job = app.jobs.start(
+      users.alice.id,
+      { kind: 'copy', totalBytes: 100, totalItems: 100 },
+      async (ctx) => {
+        await gate;
+        for (let i = 1; i <= 100; i++) ctx.update({ doneItems: i, doneBytes: i, currentItem: `/f${i}` });
+      },
+    );
     const pending = get(`/api/jobs/${job.id}/events`);
     setTimeout(release, 20);
     const res = await pending;
@@ -193,7 +201,11 @@ describe('job events (SSE)', () => {
   });
 
   it('sends a single event for finished jobs', async () => {
-    const job = app.jobs.start(users.alice.id, { kind: 'move', totalBytes: 0, totalItems: 0 }, async () => {});
+    const job = app.jobs.start(
+      users.alice.id,
+      { kind: 'move', totalBytes: 0, totalItems: 0 },
+      async () => {},
+    );
     await app.jobs.wait(job.id);
     const events = parseEvents((await get(`/api/jobs/${job.id}/events`)).payload);
     expect(events.map((e) => e.status)).toEqual(['completed']);
@@ -207,7 +219,9 @@ describe('job events (SSE)', () => {
     const job = app.jobs.start(users.alice.id, { kind: 'copy', totalBytes: 1, totalItems: 1 }, () => gate);
 
     const controller = new AbortController();
-    const res = await fetch(`http://127.0.0.1:${port}/api/jobs/${job.id}/events`, { signal: controller.signal });
+    const res = await fetch(`http://127.0.0.1:${port}/api/jobs/${job.id}/events`, {
+      signal: controller.signal,
+    });
     expect(res.headers.get('content-type')).toMatch(/^text\/event-stream/);
     const reader = res.body!.getReader();
     const { value } = await reader.read();

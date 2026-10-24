@@ -199,24 +199,28 @@ export function AddressBar(p: AddressBarProps) {
                     aria-current={i === crumbs.length - 1 ? 'location' : undefined}
                     onClick={(e) => {
                       e.stopPropagation();
-                      p.onNavigate({ share: location.share, path: c.path, ...(c.view ? { view: c.view } : {}) });
+                      p.onNavigate({
+                        share: location.share,
+                        path: c.path,
+                        ...(c.view ? { view: c.view } : {}),
+                      });
                     }}
                   >
                     {c.label}
                   </button>
                   {!c.view && (
-                  <button
-                    type="button"
-                    className="wfb-crumb-sep"
-                    aria-label={`Subcarpetas de ${c.label}`}
-                    tabIndex={-1}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void openCrumbMenu(e.currentTarget, c.path);
-                    }}
-                  >
-                    <Icon.ChevronRight size={12} />
-                  </button>
+                    <button
+                      type="button"
+                      className="wfb-crumb-sep"
+                      aria-label={`Subcarpetas de ${c.label}`}
+                      tabIndex={-1}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void openCrumbMenu(e.currentTarget, c.path);
+                      }}
+                    >
+                      <Icon.ChevronRight size={12} />
+                    </button>
                   )}
                 </li>
               ))}
