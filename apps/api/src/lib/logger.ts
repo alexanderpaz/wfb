@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { createRequire } from 'node:module';
-import type { FastifyServerOptions } from 'fastify';
+import { LogController, type FastifyServerOptions } from 'fastify';
 import type { Config } from '../config.js';
 
 export const REQUEST_ID_HEADER = 'x-request-id';
@@ -77,7 +77,13 @@ export function loggerOptions(config: Config): LoggerOptions | false {
 /** Fastify options for logging and request correlation. */
 export function loggingOptions(
   config: Config,
-): Pick<FastifyServerOptions, 'logger' | 'genReqId' | 'requestIdHeader'> {
-  // requestIdHeader is off so the raw header always goes through genReqId's validation.
-  return { logger: loggerOptions(config), genReqId, requestIdHeader: false };
+): Pick<FastifyServerOptions, 'logger' | 'genReqId' | 'requestIdHeader' | 'logController'> {
+  return {
+    logger: loggerOptions(config),
+    genReqId,
+    // Off so the raw header always goes through genReqId's validation.
+    requestIdHeader: false,
+    // Container healthchecks hit /healthz every few seconds.
+    logController: new LogController({ disableRequestLogging: (req) => req.url === '/healthz' }),
+  };
 }

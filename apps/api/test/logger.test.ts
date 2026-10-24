@@ -90,6 +90,8 @@ describe('request ids', () => {
     const { logger, ...rest } = loggingOptions(config);
     const app = Fastify({ ...rest, logger: { ...(logger as object), stream } });
     app.get('/api/auth/oidc/callback', async (request) => ({ id: request.id }));
+    app.get('/healthz', async () => ({ status: 'ok' }));
+    await app.inject({ method: 'GET', url: '/healthz' });
     const res = await app.inject({
       method: 'GET',
       url: '/api/auth/oidc/callback?code=secret-code&state=s',
@@ -102,5 +104,6 @@ describe('request ids', () => {
     expect(incoming.req.url).toBe('/api/auth/oidc/callback?code=[Redacted]&state=[Redacted]');
     expect(JSON.stringify(lines)).not.toContain('secret-code');
     expect(JSON.stringify(lines)).not.toContain('wfb_sid=abc');
+    expect(lines.some((l) => JSON.stringify(l).includes('/healthz'))).toBe(false);
   });
 });
