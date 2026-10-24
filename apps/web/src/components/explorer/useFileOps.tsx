@@ -53,14 +53,30 @@ function conflictNames(details: unknown): string[] {
 }
 
 const VERB = {
-  copy: { busy: 'Copiando', done: 'copiado', fail: 'copiar' },
-  move: { busy: 'Moviendo', done: 'movido', fail: 'mover' },
+  copy: { busy: 'Copiando', fail: 'copiar' },
+  move: { busy: 'Moviendo', fail: 'mover' },
 };
 
 export interface TransferOutcome {
   /** Where the transferred items ended up. */
   targets: FileRef[];
   failed: FileRef[];
+}
+
+/** Runs `fn` with a busy toast that is gone before the caller handles the outcome (e.g. a conflict dialog). */
+async function withBusy<T>(
+  title: string,
+  message: string | undefined,
+  fn: () => Promise<T>,
+): Promise<{ ok: true; value: T } | { ok: false; error: unknown }> {
+  const id = toast.busy(title, message);
+  try {
+    return { ok: true, value: await fn() };
+  } catch (error) {
+    return { ok: false, error };
+  } finally {
+    useToasts.getState().dismiss(id);
+  }
 }
 
 function plural(n: number, one: string, many: string) {
@@ -106,31 +122,32 @@ export function useFileOps(describe: (ref: FileRef) => string) {
       // Pasting a copy next to its source behaves like Windows ("Conservar ambos").
       let strategy: ConflictStrategy = kind === 'copy' && sameFolder ? 'rename' : 'fail';
       const verb = VERB[kind];
-      const busy = toast.busy(`${verb.busy} ${plural(items.length, '1 elemento', '# elementos')}…`);
+      const label = `${verb.busy} ${plural(items.length, '1 elemento', '# elementos')}…`;
       let res: TransferResponse;
       try {
         for (;;) {
-          try {
-            res = await api[kind]({ items, destination, conflict: strategy });
+          const attempt = await withBusy(label, undefined, () =>
+            api[kind]({ items, destination, conflict: strategy }),
+          );
+          if (attempt.ok) {
+            res = attempt.value;
             break;
-          } catch (e) {
-            if (!isConflict(e) || strategy !== 'fail') throw e;
-            const choice = await askConflict({
-              kind,
-              count: items.length,
-              names: conflictNames(e.details),
-              from: describeRef.current({ share: items[0]!.share, path: dirname(items[0]!.path) }),
-              to: describeRef.current(destination),
-            });
-            if (!choice) return null;
-            strategy = choice;
           }
+          const e = attempt.error;
+          if (!isConflict(e) || strategy !== 'fail') throw e;
+          const choice = await askConflict({
+            kind,
+            count: items.length,
+            names: conflictNames(e.details),
+            from: describeRef.current({ share: items[0]!.share, path: dirname(items[0]!.path) }),
+            to: describeRef.current(destination),
+          });
+          if (!choice) return null;
+          strategy = choice;
         }
       } catch (e) {
         toast.error(`No se pudo ${verb.fail}`, errorMessage(e));
         return null;
-      } finally {
-        useToasts.getState().dismiss(busy);
       }
 
       const dirs: FileRef[] = [destination];
@@ -248,39 +265,38 @@ export function useFileOps(describe: (ref: FileRef) => string) {
   const upload = useCallback(
     async (dir: FileRef, files: File[]): Promise<FileEntry[] | null> => {
       if (files.length === 0) return null;
-      const busy = toast.busy(
-        `Subiendo ${plural(files.length, '1 archivo', '# archivos')}…`,
-        `a ${describeRef.current(dir)}`,
-      );
       let strategy: ConflictStrategy = 'fail';
+      const label = `Subiendo ${plural(files.length, '1 archivo', '# archivos')}…`;
       try {
         for (;;) {
-          try {
-            const { entries } = await api.upload(dir, files, strategy);
+          const attempt = await withBusy(label, `a ${describeRef.current(dir)}`, () =>
+            api.upload(dir, files, strategy),
+          );
+          if (attempt.ok) {
+            const { entries } = attempt.value;
             toast.success(
               entries.length === 1
                 ? `Se ha subido «${entries[0]!.name}»`
                 : `Se han subido ${entries.length} archivos`,
             );
             return entries;
-          } catch (e) {
-            if (!isConflict(e) || strategy !== 'fail') throw e;
-            const names = conflictNames(e.details);
-            const choice = await askConflict({
-              kind: 'upload',
-              count: files.length,
-              names: names.length ? names : files.map((f) => f.name),
-              to: describeRef.current(dir),
-            });
-            if (!choice) return null;
-            strategy = choice;
           }
+          const e = attempt.error;
+          if (!isConflict(e) || strategy !== 'fail') throw e;
+          const names = conflictNames(e.details);
+          const choice = await askConflict({
+            kind: 'upload',
+            count: files.length,
+            names: names.length ? names : files.map((f) => f.name),
+            to: describeRef.current(dir),
+          });
+          if (!choice) return null;
+          strategy = choice;
         }
       } catch (e) {
         toast.error('No se pudieron subir los archivos', errorMessage(e));
         return null;
       } finally {
-        useToasts.getState().dismiss(busy);
         void invalidateDirs(qc, [dir]);
       }
     },

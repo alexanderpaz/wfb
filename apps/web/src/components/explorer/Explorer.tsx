@@ -427,7 +427,10 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
     const perRow = view === 'icons' ? layoutRun(listRef.current, 'row') : 1;
     const perCol = view === 'list' ? layoutRun(listRef.current, 'column') : 1;
 
-    if (e.altKey) return;
+    if (e.altKey) {
+      if (key === 'Enter') return (handled(), showProperties());
+      return;
+    }
     if (ctrl && !e.shiftKey) {
       switch (key.toLowerCase()) {
         case 'a':

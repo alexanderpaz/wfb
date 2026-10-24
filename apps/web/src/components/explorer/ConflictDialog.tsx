@@ -27,14 +27,30 @@ export function ConflictDialog({
       : names.length > 1
         ? `El destino tiene ${names.length} elementos con los mismos nombres`
         : 'El destino ya contiene elementos con los mismos nombres';
-  const options: { strategy: Exclude<ConflictStrategy, 'fail'>; label: string; hint: string }[] = [
+  const options: {
+    strategy: Exclude<ConflictStrategy, 'fail'>;
+    label: string;
+    hint: string;
+    icon: React.ReactNode;
+  }[] = [
     {
       strategy: 'overwrite',
       label: 'Reemplazar los archivos en el destino',
       hint: 'Los elementos existentes se sobrescribirán.',
+      icon: <Icon.Check />,
     },
-    { strategy: 'skip', label: 'Omitir estos archivos', hint: 'Solo se transferirán los que no existan.' },
-    { strategy: 'rename', label: 'Conservar ambos', hint: 'Se añadirá un número al nombre de los nuevos.' },
+    {
+      strategy: 'skip',
+      label: 'Omitir estos archivos',
+      hint: 'Solo se transferirán los que no existan.',
+      icon: <Icon.Forward />,
+    },
+    {
+      strategy: 'rename',
+      label: 'Conservar ambos',
+      hint: 'Se añadirá un número al nombre de los nuevos.',
+      icon: <Icon.Copy />,
+    },
   ];
   return (
     <Dialog
@@ -75,9 +91,7 @@ export function ConflictDialog({
             data-autofocus={i === 0 ? '' : undefined}
             onClick={() => onResolve(o.strategy)}
           >
-            <span className="wfb-conflict-check">
-              <Icon.Check />
-            </span>
+            <span className="wfb-conflict-check">{o.icon}</span>
             <span>
               <span className="wfb-conflict-label">{o.label}</span>
               <span className="wfb-conflict-hint">{o.hint}</span>
