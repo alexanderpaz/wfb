@@ -1,6 +1,14 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { Explorer } from './components/explorer';
+import { AuthGate, AuthProvider, UserMenu } from './features/auth';
 
-/** Root component. The orchestrator wraps the explorer with the auth gate. */
 export function App() {
-  return <Explorer />;
+  const queryClient = useQueryClient();
+  return (
+    <AuthProvider onSignOut={() => queryClient.clear()}>
+      <AuthGate>
+        <Explorer headerRight={<UserMenu />} />
+      </AuthGate>
+    </AuthProvider>
+  );
 }
