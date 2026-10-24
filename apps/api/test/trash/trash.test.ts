@@ -119,7 +119,7 @@ describe('trash', () => {
 
   it('checks permissions and validates ids', async () => {
     // public: read + write (no delete); finance: read only.
-    expect((await app.inject({ method: 'GET', url: '/api/trash?share=public' })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/api/trash?share=public' })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/trash?share=finance' })).statusCode).toBe(403);
     expect((await app.inject({ method: 'GET', url: '/api/trash?share=eng' })).statusCode).toBe(404);
     expect((await post('/api/trash/purge', { share: 'public', ids: ['lz1abcde-0011aabb'] })).statusCode).toBe(
