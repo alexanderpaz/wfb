@@ -1,9 +1,31 @@
+# Only what the Dockerfile copies matters; keep the context small and the
+# build cache stable when docs, CI or e2e tests change.
 **/node_modules
 **/dist
 **/coverage
 **/.data
+**/.vite
+**/*.log
+**/*.tsbuildinfo
 **/playwright-report
 **/test-results
 .git
+.github
+.cursor
+.vscode
+.idea
 .env
 .env.*
+docs
+*.md
+config
+deploy/*
+!deploy/docker-entrypoint.sh
+e2e/*
+!e2e/package.json
+apps/*/test
+**/*.test.ts
+**/*.test.tsx
+docker-compose*.yml
+Dockerfile
+.dockerignore

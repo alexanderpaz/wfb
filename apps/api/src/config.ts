@@ -16,6 +16,10 @@ const EnvSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  /** Human readable logs through pino-pretty (development only, when installed). */
+  LOG_PRETTY: bool(false),
+  /** Seconds to wait for in-flight requests on SIGTERM before forcing exit. */
+  SHUTDOWN_TIMEOUT_SECONDS: z.coerce.number().positive().default(25),
   /** Public URL. Coolify provides it through SERVICE_URL_APP / SERVICE_FQDN_APP. */
   APP_URL: optionalString,
   SERVICE_URL_APP: optionalString,
@@ -67,6 +71,8 @@ export interface Config {
   host: string;
   port: number;
   logLevel: Env['LOG_LEVEL'];
+  logPretty: boolean;
+  shutdownTimeoutMs: number;
   appUrl: string;
   webDist: string | undefined;
   session: { secret: string; ttlSeconds: number; secureCookie: boolean };
@@ -164,6 +170,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     host: env.HOST,
     port: env.PORT,
     logLevel: env.LOG_LEVEL,
+    logPretty: env.LOG_PRETTY,
+    shutdownTimeoutMs: env.SHUTDOWN_TIMEOUT_SECONDS * 1000,
     appUrl,
     webDist: env.WEB_DIST,
     session: {
