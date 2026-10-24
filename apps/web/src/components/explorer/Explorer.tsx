@@ -49,6 +49,8 @@ export interface ExplorerProps {
   onOpenFile?: (entry: FileEntry, share: string) => void;
   /** Rendered at the right end of the command bar (e.g. the user menu). */
   headerRight?: ReactNode;
+  /** Large-icon view thumbnail for an entry; `fallback` is the regular file-type icon. */
+  renderThumbnail?: (entry: FileEntry, share: string, fallback: ReactNode) => ReactNode;
 }
 
 interface Selection {
@@ -125,7 +127,12 @@ function useNarrow(ref: React.RefObject<HTMLElement>, breakpoint: number) {
   return narrow;
 }
 
-export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRight }: ExplorerProps) {
+export function Explorer({
+  renderPreview,
+  onOpenFile = defaultOpenFile,
+  headerRight,
+  renderThumbnail,
+}: ExplorerProps) {
   const nav = useNavigation();
   const { location } = nav;
   const prefs = useExplorerPrefs();
@@ -850,6 +857,9 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
   else
     body = (
       <FileView
+        renderBigIcon={
+          renderThumbnail ? (entry, fallback) => renderThumbnail(entry, location.share, fallback) : undefined
+        }
         label={folderName}
         entries={entries}
         view={prefs.view}

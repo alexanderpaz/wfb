@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Explorer } from './components/explorer';
-import { PreviewPane, usePreviewModal } from './components/preview';
+import { PreviewPane, Thumbnail, usePreviewModal } from './components/preview';
 import { AuthGate, AuthProvider, UserMenu } from './features/auth';
 
 export function App() {
@@ -12,6 +12,15 @@ export function App() {
         <Explorer
           headerRight={<UserMenu />}
           renderPreview={(entry, share) => <PreviewPane entry={entry} share={share} />}
+          renderThumbnail={(entry, share, fallback) => (
+            <Thumbnail
+              share={share}
+              path={entry.path}
+              size="medium"
+              version={entry.modifiedAt}
+              fallback={fallback}
+            />
+          )}
           onOpenFile={preview.open}
         />
         {preview.modal}
