@@ -1,6 +1,13 @@
-# Production stack, consumed by Coolify ("Docker Compose" build pack).
-# Coolify injects SERVICE_* magic variables and routes the domain to app:3000
-# through its proxy, so no host ports are published here.
+# Production stack for Coolify ("Docker Compose" build pack). Guide: deploy/COOLIFY.md
+#
+# Coolify generates the SERVICE_* variables and routes the domain set for the
+# `app` service to port 3000 through its proxy, so no host ports are published.
+# `${VAR:?}` marks variables that must be set in Coolify before deploying.
+#
+# Local test with simulated Coolify variables (see deploy/COOLIFY.md):
+#   SERVICE_URL_APP=http://localhost:3000 SERVICE_USER_POSTGRES=wfb SERVICE_PASSWORD_POSTGRES=pw \
+#   SERVICE_PASSWORD_REDIS=pw SERVICE_BASE64_64_SESSION=$(openssl rand -base64 48) \
+#   SHARES_HOST_PATH=/srv/fileshares docker compose -p wfb-prodtest up -d --build
 services:
   app:
     build:
@@ -8,20 +15,27 @@ services:
       dockerfile: Dockerfile
       args:
         INSTALL_LIBREOFFICE: ${INSTALL_LIBREOFFICE:-false}
+        VERSION: ${APP_VERSION:-0.1.0}
+        REVISION: ${SOURCE_COMMIT:-unknown}
+    # Must be able to read (and write, for write/delete ACLs) SHARES_HOST_PATH.
     user: '${PUID:-1000}:${PGID:-1000}'
     restart: unless-stopped
+    stop_grace_period: 30s
     expose:
       - '3000'
     environment:
       - SERVICE_FQDN_APP_3000
       - APP_URL=${SERVICE_URL_APP}
       - NODE_ENV=production
+      - TZ=${TZ:-UTC}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - SHUTDOWN_TIMEOUT_SECONDS=${SHUTDOWN_TIMEOUT_SECONDS:-25}
       - SESSION_SECRET=${SERVICE_BASE64_64_SESSION}
       - SESSION_TTL_HOURS=${SESSION_TTL_HOURS:-12}
+      - LOGIN_RATE_LIMIT_PER_MINUTE=${LOGIN_RATE_LIMIT_PER_MINUTE:-10}
       - DATABASE_URL=postgresql://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/${POSTGRES_DB:-wfb}?schema=public
       - REDIS_URL=redis://default:${SERVICE_PASSWORD_REDIS}@redis:6379/0
-      # Directory login (LDAP or Active Directory). Set DIRECTORY_KIND=none to disable.
+      # Directory login (LDAP or Active Directory). DIRECTORY_KIND=none disables it.
       - DIRECTORY_KIND=${DIRECTORY_KIND:-none}
       - DIRECTORY_LABEL=${DIRECTORY_LABEL:-}
       - LDAP_URL=${LDAP_URL:-}
@@ -33,7 +47,9 @@ services:
       - LDAP_START_TLS=${LDAP_START_TLS:-false}
       - LDAP_TLS_REJECT_UNAUTHORIZED=${LDAP_TLS_REJECT_UNAUTHORIZED:-true}
       - AD_DOMAIN=${AD_DOMAIN:-}
-      # OIDC (Authentik). Leave OIDC_ISSUER empty to disable.
+      # Private CA for LDAPS/StartTLS or the OIDC issuer (file inside SHARES_CONFIG_HOST_DIR).
+      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-}
+      # OIDC (Authentik). Empty OIDC_ISSUER disables it.
       - OIDC_ISSUER=${OIDC_ISSUER:-}
       - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
       - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
@@ -42,46 +58,88 @@ services:
       - OIDC_LABEL=${OIDC_LABEL:-Authentik}
       - OIDC_TOKEN_AUTH_METHOD=${OIDC_TOKEN_AUTH_METHOD:-client_secret_post}
       # Storage
-      - SHARES_CONFIG=/config/shares.yaml
+      - SHARES_CONFIG=/config/${SHARES_CONFIG_FILE:-shares.example.yaml}
       - HOME_ROOT=${HOME_ROOT:-}
+      - TRASH_DIR_NAME=${TRASH_DIR_NAME:-.wfb-trash}
       - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-1024}
       - SYNC_TRANSFER_LIMIT_MB=${SYNC_TRANSFER_LIMIT_MB:-50}
       - OFFICE_PREVIEW=${INSTALL_LIBREOFFICE:-false}
     volumes:
+      # Upload chunks and office preview cache.
       - app-data:/app/data
-      - ${SHARES_HOST_PATH:-/srv/fileshares}:/data/shares
-      - ${SHARES_CONFIG_HOST_PATH:-./config/shares.example.yaml}:/config/shares.yaml:ro
+      # Thumbnail cache, safe to delete at any time.
+      - app-thumbs:/app/data/thumbs
+      # Host folder holding the shares; paths in shares.yaml live under /data/shares.
+      - ${SHARES_HOST_PATH:?set SHARES_HOST_PATH to the host folder with the shares}:/data/shares
+      # Folder with shares.yaml (hot reloaded). Relative paths resolve inside the repo checkout.
+      - ${SHARES_CONFIG_HOST_DIR:-./config}:/config:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:3000/healthz']
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '5'
 
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    shm_size: 128mb
     environment:
       - POSTGRES_USER=${SERVICE_USER_POSTGRES}
       - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
       - POSTGRES_DB=${POSTGRES_DB:-wfb}
+      - TZ=${TZ:-UTC}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      # pg_dump target and scripts for the scheduled backup task (deploy/COOLIFY.md).
+      - postgres-backups:/backups
+      - ./deploy/scripts:/scripts:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ['redis-server', '--requirepass', '${SERVICE_PASSWORD_REDIS}', '--appendonly', 'yes']
+    # Sessions and upload state: never evict keys, persist with AOF.
+    command:
+      [
+        'redis-server',
+        '--requirepass',
+        '${SERVICE_PASSWORD_REDIS}',
+        '--appendonly',
+        'yes',
+        '--maxmemory',
+        '${REDIS_MAXMEMORY:-256mb}',
+        '--maxmemory-policy',
+        'noeviction',
+      ]
+    environment:
+      - REDIS_PASSWORD=${SERVICE_PASSWORD_REDIS}
     volumes:
       - redis-data:/data
     healthcheck:
@@ -89,10 +147,16 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    environment:
-      - REDIS_PASSWORD=${SERVICE_PASSWORD_REDIS}
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 
 volumes:
   app-data:
+  app-thumbs:
   postgres-data:
+  postgres-backups:
   redis-data:
