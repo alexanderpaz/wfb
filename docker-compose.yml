@@ -2,8 +2,9 @@
 #
 # Coolify generates the SERVICE_* variables and routes the domain set for the
 # `app` service to port 3000 through its proxy, so no host ports are published.
-# SHARES_HOST_PATH and SHARES_CONFIG_HOST_DIR must be set in Coolify before deploying. Volume
-# sources only use plain `${VAR}`: Coolify rejects `${VAR:?message}` as unsafe.
+# SHARES_HOST_PATH and SHARES_CONFIG_HOST_DIR must be set in Coolify before deploying (they are
+# marked required through the app's environment). Volume sources only use plain `${VAR}`:
+# Coolify rejects `${VAR:?message}` there as unsafe.
 #
 # Local test with simulated Coolify variables (see deploy/COOLIFY.md):
 #   SERVICE_URL_APP=http://localhost:3000 SERVICE_USER_POSTGRES=wfb SERVICE_PASSWORD_POSTGRES=pw \
@@ -62,7 +63,11 @@ services:
       - OIDC_GROUPS_CLAIM=${OIDC_GROUPS_CLAIM:-groups}
       - OIDC_LABEL=${OIDC_LABEL:-Authentik}
       - OIDC_TOKEN_AUTH_METHOD=${OIDC_TOKEN_AUTH_METHOD:-client_secret_post}
-      # Storage
+      # Storage. The two host paths are only used by `volumes`; listing them here makes Coolify
+      # show them as required variables (it rejects `:?` in volume sources, not in environment).
+      - SHARES_HOST_PATH=${SHARES_HOST_PATH:?}
+      - SHARES_CONFIG_HOST_DIR=${SHARES_CONFIG_HOST_DIR:?}
+      - SHARES_CONFIG_FILE=${SHARES_CONFIG_FILE:-shares.yaml}
       - SHARES_CONFIG=/config/${SHARES_CONFIG_FILE:-shares.yaml}
       - HOME_ROOT=${HOME_ROOT:-}
       - TRASH_DIR_NAME=${TRASH_DIR_NAME:-.wfb-trash}
