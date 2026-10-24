@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { Blob as NodeBlob, File as NodeFile } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -170,7 +170,7 @@ describe('trash view', () => {
   async function openTrash(user: Awaited<ReturnType<typeof openEngineering>>['user']) {
     const tree = screen.getByRole('tree');
     const root = within(tree).getByRole('treeitem', { name: 'Papelera de reciclaje' });
-    // Only shares with delete permission get a recycle bin.
+    // Only shares with read plus write or delete get a recycle bin.
     await user.click(root.querySelector('.wfb-tree-row')!);
     expect(within(tree).queryByRole('treeitem', { name: 'Papelera de Público' })).not.toBeInTheDocument();
     await user.click(
@@ -222,6 +222,20 @@ describe('trash view', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Eliminar' }));
     expect(await screen.findByText('La papelera está vacía.')).toBeInTheDocument();
     expect(db.trash.get('engineering')).toEqual([]);
+  });
+
+  it('lets read+write users restore but not purge', async () => {
+    const { user } = await openEngineering();
+    await trashTwo(user);
+    cleanup();
+    db.shares.get('engineering')!.share.permissions = ['read', 'write'];
+    const r = renderExplorer({}, ENG);
+    await option('Proyectos');
+    const list = await openTrash(r.user);
+    await r.user.click(await within(list).findByRole('option', { name: 'notas.txt' }));
+    expect(screen.getByRole('button', { name: 'Restaurar' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Eliminar permanentemente' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Vaciar papelera' })).toBeDisabled();
   });
 
   it('deletes permanently with Shift+Delete, bypassing the trash', async () => {

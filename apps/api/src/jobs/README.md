@@ -9,9 +9,11 @@ Registered after `wfb-files`; sets `app.files.trash` and `app.files.jobs` and de
   cancel stops between chunks and removes the partial temp file and the partially copied item.
   `GET /jobs/:id/events` is SSE: current state, throttled updates (~4/s), heartbeat comment every 15 s,
   final state, then the stream ends.
-- `trash/` — `<shareRoot>/<TRASH_DIR_NAME>/<id>/{item,meta.json}`. List needs read+delete, restore needs
-  write (parents recreated, name conflicts become "name (1)"), purge needs delete. Entries older than 30 days
-  are purged on access.
+- `trash/` — `<shareRoot>/<TRASH_DIR_NAME>/<id>/{item,meta.json}`. The trash of a share is shared by every
+  user entitled to act on it, whoever deleted the item (`deletedBy` is informative): list needs read + (write
+  or delete), restore needs read + write (parents recreated, name conflicts become "name (1)"), purge needs
+  read + delete. Read is always required so write-only drop boxes never reveal deleted names. Entries older
+  than 30 days are purged on access.
 - `search/` — breadth-first, case/accent-insensitive substring match on names; skips the trash, temp files
   and escaping symlinks (symlinks are never traversed). Limits: depth 20, 50k entries, 3 s, `limit` results
   → `truncated: true`.

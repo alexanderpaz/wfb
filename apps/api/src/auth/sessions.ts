@@ -6,6 +6,8 @@ export interface SessionData {
   user: User;
   csrfToken: string;
   createdAt: number;
+  /** OIDC sessions: the id token, sent as `id_token_hint` on logout. */
+  idToken?: string;
 }
 
 export interface Session extends SessionData {
@@ -23,9 +25,9 @@ export class SessionStore {
     private readonly ttlSeconds: number,
   ) {}
 
-  async create(user: User): Promise<Session> {
-    const session: Session = { id: randomToken(), user, csrfToken: randomToken(), createdAt: Date.now() };
-    const data: SessionData = { user, csrfToken: session.csrfToken, createdAt: session.createdAt };
+  async create(user: User, extra: Pick<SessionData, 'idToken'> = {}): Promise<Session> {
+    const data: SessionData = { user, csrfToken: randomToken(), createdAt: Date.now(), ...extra };
+    const session: Session = { id: randomToken(), ...data };
     await this.kv.set(key(session.id), JSON.stringify(data), this.ttlSeconds);
     return session;
   }

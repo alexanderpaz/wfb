@@ -2,6 +2,7 @@ import type { User } from '@wfb/contracts';
 import * as client from 'openid-client';
 import type { Config } from '../config.js';
 import type { KeyValueStore } from '../lib/kv.js';
+import { safeEqual } from './sessions.js';
 
 export type OidcConfig = NonNullable<Config['oidc']>;
 
@@ -78,6 +79,8 @@ export interface OidcCallbackResult {
   user: User;
   subject: string;
   returnTo: string;
+  /** Kept in the session for RP-initiated logout (`id_token_hint`). */
+  idToken: string | undefined;
 }
 
 /** Authorization code + PKCE flow against the configured issuer (Authentik). */
@@ -88,6 +91,8 @@ export class OidcService {
     private readonly cfg: OidcConfig,
     private readonly kv: KeyValueStore,
     private readonly allowInsecure: boolean,
+    /** Where the IdP sends the browser after an RP-initiated logout (APP_URL). */
+    private readonly postLogoutRedirectUri: string,
   ) {}
 
   /** Lazy discovery; a failed discovery is retried on the next call. */
@@ -113,7 +118,11 @@ export class OidcService {
     return this.configuration;
   }
 
-  async authorizationUrl(returnTo: unknown): Promise<string> {
+  /**
+   * Returns the IdP URL and the `state`, which the caller must bind to the
+   * browser (cookie) and hand back to `handleCallback`.
+   */
+  async authorizationUrl(returnTo: unknown): Promise<{ url: string; state: string }> {
     const config = await this.getConfiguration();
     const codeVerifier = client.randomPKCECodeVerifier();
     const codeChallenge = await client.calculatePKCECodeChallenge(codeVerifier);
@@ -121,7 +130,7 @@ export class OidcService {
     const nonce = client.randomNonce();
     const pending: PendingLogin = { codeVerifier, nonce, returnTo: safeReturnTo(returnTo) };
     await this.kv.set(stateKey(state), JSON.stringify(pending), STATE_TTL_SECONDS);
-    return client
+    const url = client
       .buildAuthorizationUrl(config, {
         redirect_uri: this.cfg.redirectUri,
         scope: this.cfg.scopes,
@@ -132,16 +141,24 @@ export class OidcService {
         nonce,
       })
       .toString();
+    return { url, state };
   }
 
-  /** `query` is the raw query string of the callback request (without '?'). */
-  async handleCallback(query: string): Promise<OidcCallbackResult> {
+  /**
+   * `query` is the raw query string of the callback request (without '?').
+   * `browserState` is the state bound to the browser that started the login:
+   * a callback carrying another state (login CSRF) is rejected.
+   */
+  async handleCallback(query: string, browserState: string | null): Promise<OidcCallbackResult> {
     const params = new URLSearchParams(query);
     const state = params.get('state');
     const pendingRaw = state ? await this.kv.get(stateKey(state)) : null;
     if (state) await this.kv.del(stateKey(state));
     if (params.get('error')) throw new OidcError('oidc_denied', `IdP returned ${params.get('error')}`);
     if (!state || !pendingRaw) throw new OidcError('oidc_state', 'Unknown or expired OIDC state');
+    if (!browserState || !safeEqual(state, browserState)) {
+      throw new OidcError('oidc_state', 'OIDC state was not started by this browser');
+    }
     const pending = JSON.parse(pendingRaw) as PendingLogin;
 
     const config = await this.getConfiguration();
@@ -149,6 +166,7 @@ export class OidcService {
     currentUrl.search = params.toString();
 
     let claims: Record<string, unknown>;
+    let idToken: string | undefined;
     try {
       const tokens = await client.authorizationCodeGrant(config, currentUrl, {
         pkceCodeVerifier: pending.codeVerifier,
@@ -158,6 +176,7 @@ export class OidcService {
       });
       const idClaims = tokens.claims();
       if (!idClaims) throw new Error('missing id_token');
+      idToken = tokens.id_token;
       claims = { ...idClaims };
       try {
         const info = await client.fetchUserInfo(config, tokens.access_token, idClaims.sub);
@@ -173,6 +192,27 @@ export class OidcService {
       user: userFromClaims(claims, this.cfg.groupsClaim),
       subject: String(claims.sub),
       returnTo: pending.returnTo,
+      idToken,
     };
+  }
+
+  /**
+   * IdP logout URL (RP-initiated logout) or null when the IdP does not
+   * advertise an `end_session_endpoint` or is unreachable.
+   */
+  async endSessionUrl(idToken: string | undefined): Promise<string | null> {
+    let config: client.Configuration;
+    try {
+      config = await this.getConfiguration();
+    } catch {
+      return null;
+    }
+    if (!config.serverMetadata().end_session_endpoint) return null;
+    const params: Record<string, string> = {
+      post_logout_redirect_uri: this.postLogoutRedirectUri,
+      client_id: this.cfg.clientId,
+    };
+    if (idToken) params.id_token_hint = idToken;
+    return client.buildEndSessionUrl(config, params).toString();
   }
 }

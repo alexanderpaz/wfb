@@ -40,6 +40,7 @@ export function TrashView({ share }: TrashViewProps) {
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [busy, setBusy] = useState(false);
   const canRestore = share.permissions.includes('write');
+  const canPurge = share.permissions.includes('delete');
   const selection = items.filter((i) => selected.has(i.id));
 
   useEffect(() => setSelected(new Set()), [share.id]);
@@ -94,7 +95,7 @@ export function TrashView({ share }: TrashViewProps) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
       e.preventDefault();
       setSelected(new Set(items.map((i) => i.id)));
-    } else if (e.key === 'Delete' && selection.length > 0) {
+    } else if (e.key === 'Delete' && selection.length > 0 && canPurge) {
       e.preventDefault();
       setConfirm({ kind: 'purge', items: selection });
     } else if (e.key === 'Escape') {
@@ -122,7 +123,8 @@ export function TrashView({ share }: TrashViewProps) {
           <button
             type="button"
             className="wfb-cmd"
-            disabled={busy || selection.length === 0}
+            disabled={busy || selection.length === 0 || !canPurge}
+            title={canPurge ? undefined : 'No tiene permiso de eliminación'}
             onClick={() => setConfirm({ kind: 'purge', items: selection })}
           >
             <Icon.Delete />
@@ -131,7 +133,8 @@ export function TrashView({ share }: TrashViewProps) {
           <button
             type="button"
             className="wfb-cmd"
-            disabled={busy || items.length === 0}
+            disabled={busy || items.length === 0 || !canPurge}
+            title={canPurge ? undefined : 'No tiene permiso de eliminación'}
             onClick={() => setConfirm({ kind: 'empty', items })}
           >
             <Icon.RecycleBin />
