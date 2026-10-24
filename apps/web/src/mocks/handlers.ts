@@ -19,7 +19,8 @@ import { MockError } from './db';
 
 /** MSW handlers implementing the contract in memory (see `./db`). */
 
-const url = (path: string) => `${API_PREFIX}${path}`;
+/** Origin-agnostic so the same handlers work in the browser, jsdom and plain node. */
+const url = (path: string) => `*${API_PREFIX}${path}`;
 
 function errorResponse(status: number, code: ApiError['error']['code'], message: string, details?: unknown) {
   return HttpResponse.json<ApiError>({ error: { code, message, details } }, { status });

@@ -263,7 +263,7 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
   const pasteInto = async (path: string) => {
     if (!can(location.share, 'write') || clipboard.items.length === 0) return;
     const result = await ops.paste({ share: location.share, path });
-    if (result && path === location.path) pendingSelect.current = result.map((r) => r.path);
+    if (result && path === location.path) pendingSelect.current = result.targets.map((r) => r.path);
   };
 
   const startRename = () => {
@@ -549,7 +549,14 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
           if (files.length) void ops.upload(ref, files);
         } else if (op && items) {
           void ops.transfer(op, items, ref).then((res) => {
-            if (res && op === 'move') useClipboard.getState().clear();
+            const cut = useClipboard.getState();
+            if (res && op === 'move' && cut.mode === 'cut') {
+              const key = (r: FileRef) => `${r.share}:${r.path}`;
+              const failed = new Set(res.failed.map(key));
+              const moved = new Set(items.map(key).filter((k) => !failed.has(k)));
+              const rest = cut.items.filter((i) => !moved.has(key(i)));
+              if (rest.length !== cut.items.length) cut.set('cut', rest);
+            }
           });
         }
       },
@@ -776,15 +783,6 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
       />
     );
   else if (shares.length === 0) body = <PaneMessage title="No tiene acceso a ningún recurso compartido." />;
-  else if (listQ.isPending) body = <Skeleton />;
-  else if (listQ.isError && !listQ.data)
-    body = (
-      <PaneMessage
-        title="No se puede acceder a esta ubicación"
-        detail={errorMessage(listQ.error)}
-        onRetry={() => void listQ.refetch()}
-      />
-    );
   else
     body = (
       <FileView
@@ -802,9 +800,19 @@ export function Explorer({ renderPreview, onOpenFile = defaultOpenFile, headerRi
         listRef={listRef}
         idPrefix={idPrefix}
         empty={
-          <div className="wfb-empty">
-            {search ? 'Ningún elemento coincide con la búsqueda.' : 'Esta carpeta está vacía.'}
-          </div>
+          listQ.isPending ? (
+            <Skeleton />
+          ) : listQ.isError && !listQ.data ? (
+            <PaneMessage
+              title="No se puede acceder a esta ubicación"
+              detail={errorMessage(listQ.error)}
+              onRetry={() => void listQ.refetch()}
+            />
+          ) : (
+            <div className="wfb-empty">
+              {search ? 'Ningún elemento coincide con la búsqueda.' : 'Esta carpeta está vacía.'}
+            </div>
+          )
         }
         onSort={(k) => prefs.setSort(k)}
         onResizeColumn={prefs.setColumnWidth}

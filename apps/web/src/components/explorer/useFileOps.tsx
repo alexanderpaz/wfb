@@ -57,6 +57,12 @@ const VERB = {
   move: { busy: 'Moviendo', done: 'movido', fail: 'mover' },
 };
 
+export interface TransferOutcome {
+  /** Where the transferred items ended up. */
+  targets: FileRef[];
+  failed: FileRef[];
+}
+
 function plural(n: number, one: string, many: string) {
   return n === 1 ? one : many.replace('#', String(n));
 }
@@ -85,14 +91,18 @@ export function useFileOps(describe: (ref: FileRef) => string) {
     [],
   );
 
-  /** Copies or moves `items` into `destination`. Resolves to the target refs that were written, or null. */
+  /** Copies or moves `items` into `destination`. Resolves to null when cancelled or rejected. */
   const transfer = useCallback(
-    async (kind: 'copy' | 'move', items: FileRef[], destination: FileRef): Promise<FileRef[] | null> => {
+    async (
+      kind: 'copy' | 'move',
+      items: FileRef[],
+      destination: FileRef,
+    ): Promise<TransferOutcome | null> => {
       if (items.length === 0) return null;
       const sameFolder = items.every(
         (i) => i.share === destination.share && dirname(i.path) === destination.path,
       );
-      if (kind === 'move' && sameFolder) return [];
+      if (kind === 'move' && sameFolder) return { targets: [], failed: [] };
       // Pasting a copy next to its source behaves like Windows ("Conservar ambos").
       let strategy: ConflictStrategy = kind === 'copy' && sameFolder ? 'rename' : 'fail';
       const verb = VERB[kind];
@@ -128,7 +138,7 @@ export function useFileOps(describe: (ref: FileRef) => string) {
       if (res.mode === 'job') {
         toast.info('La operación continúa en segundo plano', 'Actualice la carpeta cuando termine.');
         await invalidateDirs(qc, dirs);
-        return [];
+        return { targets: [], failed: [] };
       }
       const failed = res.results.filter((r) => r.status === 'failed');
       if (failed.length > 0) {
@@ -142,7 +152,10 @@ export function useFileOps(describe: (ref: FileRef) => string) {
       }
       const moved = res.results.filter((r) => r.status === 'done').map((r) => r.source);
       await Promise.all([invalidateDirs(qc, dirs), kind === 'move' ? invalidateSubtrees(qc, moved) : null]);
-      return res.results.filter((r) => r.status !== 'failed' && r.target).map((r) => r.target!);
+      return {
+        targets: res.results.filter((r) => r.status !== 'failed' && r.target).map((r) => r.target!),
+        failed: failed.map((r) => r.source),
+      };
     },
     [qc, askConflict],
   );
@@ -152,7 +165,11 @@ export function useFileOps(describe: (ref: FileRef) => string) {
       const { mode, items, clear } = useClipboard.getState();
       if (items.length === 0) return null;
       const result = await transfer(mode === 'cut' ? 'move' : 'copy', items, destination);
-      if (result && mode === 'cut') clear();
+      if (result && mode === 'cut') {
+        // Items that could not be moved stay on the clipboard so the user can retry.
+        if (result.failed.length === 0) clear();
+        else useClipboard.getState().set('cut', result.failed);
+      }
       return result;
     },
     [transfer],
