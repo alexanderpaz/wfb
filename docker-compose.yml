@@ -80,11 +80,18 @@ services:
       # Thumbnail cache, safe to delete at any time.
       - app-thumbs:/app/data/thumbs
       # Host folder holding the shares; paths in shares.yaml live under /data/shares.
-      - ${SHARES_HOST_PATH}:/data/shares
+      # Long-form bind: the short form `${VAR}:/path` made Coolify create an empty named
+      # volume instead of mounting the host directory.
+      - type: bind
+        source: ${SHARES_HOST_PATH}
+        target: /data/shares
       # Folder with shares.yaml (hot reloaded). Must be an absolute host path: Coolify resolves
       # relative paths against its application folder, not the repository, and Docker would
       # mount an empty directory in their place.
-      - ${SHARES_CONFIG_HOST_DIR}:/config:ro
+      - type: bind
+        source: ${SHARES_CONFIG_HOST_DIR}
+        target: /config
+        read_only: true
     depends_on:
       postgres:
         condition: service_healthy
